@@ -14,14 +14,17 @@
     "db:check": "tsx scripts/check-db.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:check-location": "tsx scripts/check-location-roundtrip.ts",
+    "db:check-location-constraints": "tsx scripts/check-location-constraints.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.12",
     "pg": "8.22.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
