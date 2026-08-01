@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    platform: linux/amd64
+    container_name: commutemap-postgis
+    environment:
+      POSTGRES_DB: commutemap_ph
+      POSTGRES_USER: commutemap
+      POSTGRES_PASSWORD: commutemap_local
+    ports:
+      - "5433:5432"
+    volumes:
+      - commutemap_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commutemap -d commutemap_ph"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  commutemap_postgres_data:
