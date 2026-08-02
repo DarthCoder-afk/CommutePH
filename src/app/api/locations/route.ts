@@ -1,40 +1,55 @@
-import { asc, eq } from "drizzle-orm";
-
-import { db } from "@/server/db";
-import { locations } from "@/server/db/schema";
+import {
+  locationSearchMaxLength,
+  locationSearchMinLength,
+  searchActiveLocations,
+} from "@/server/locations/search-locations";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  try {
-    const locationRows = await db
-      .select({
-        id: locations.id,
-        name: locations.name,
-        slug: locations.slug,
-        kind: locations.kind,
-        description: locations.description,
-        city: locations.city,
-        area: locations.area,
-        coordinates: locations.coordinates,
-      })
-      .from(locations)
-      .where(eq(locations.isActive, true))
-      .orderBy(asc(locations.name));
+export async function GET(request: Request) {
+  const searchParams = new URL(request.url).searchParams;
+  const query = (searchParams.get("q") ?? "").trim();
 
-    const responseLocations = locationRows.map(
-      ({ coordinates, ...location }) => ({
-        ...location,
-        longitude: coordinates.x,
-        latitude: coordinates.y,
-      }),
+  if (query.length > 0 && query.length < locationSearchMinLength) {
+    return Response.json(
+      {
+        error: {
+          code: "LOCATION_QUERY_TOO_SHORT",
+          message: `Search queries must contain at least ${locationSearchMinLength} characters.`,
+        },
+      },
+      {
+        status: 400,
+      },
     );
+  }
+
+  if (query.length > locationSearchMaxLength) {
+    return Response.json(
+      {
+        error: {
+          code: "LOCATION_QUERY_TOO_LONG",
+          message: `Search queries cannot exceed ${locationSearchMaxLength} characters.`,
+        },
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
+  try {
+    const result = await searchActiveLocations(query);
 
     return Response.json({
-      data: responseLocations,
+      data: result,
+      meta: {
+        query,
+        count: result.length,
+      },
     });
   } catch (error) {
-    console.error("Failed to fetch locations:", error);
+    console.error("Failed to search locations:", error);
 
     return Response.json(
       {
