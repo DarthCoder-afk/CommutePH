@@ -1,15 +1,11 @@
 import "server-only";
 
+import { serverEnv } from "@/server/env";
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
-
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not defined.");
-}
 
 const globalForDatabase = globalThis as typeof globalThis & {
   commuteMapDatabasePool?: Pool;
@@ -18,7 +14,7 @@ const globalForDatabase = globalThis as typeof globalThis & {
 const pool =
   globalForDatabase.commuteMapDatabasePool ??
   new Pool({
-    connectionString,
+    connectionString: serverEnv.DATABASE_URL,
   });
 
 if (process.env.NODE_ENV !== "production") {

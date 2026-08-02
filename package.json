@@ -22,7 +22,9 @@
     "db:seed-draft-journey": "tsx scripts/seed-draft-journey.ts",
     "db:check-draft-journey": "tsx scripts/check-draft-journey.ts",
     "db:check-journey-readiness": "tsx scripts/check-journey-readiness.ts",
-    "test:journey-estimates": "tsx --test src/server/journeys/calculate-journey-estimates.test.ts"
+    "test:journey-estimates": "tsx --test src/server/journeys/calculate-journey-estimates.test.ts",
+    "test:env": "tsx --test src/config/database-url.test.ts",
+    "check:public-release": "tsx scripts/check-public-release.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
