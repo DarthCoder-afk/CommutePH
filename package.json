@@ -17,7 +17,8 @@
     "db:studio": "drizzle-kit studio",
     "db:check-location": "tsx scripts/check-location-roundtrip.ts",
     "db:check-location-constraints": "tsx scripts/check-location-constraints.ts",
-    "db:seed": "tsx scripts/seed-locations.ts"
+    "db:seed": "tsx scripts/seed-locations.ts",
+    "db:seed-draft-routes": "tsx scripts/seed-draft-routes.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

@@ -59,6 +59,33 @@ const seedLocations = [
     },
     isActive: true,
   },
+  {
+    name: "BGC Bus EDSA Ayala Terminal",
+    slug: "bgc-bus-edsa-ayala-terminal",
+    kind: "terminal",
+    description:
+      "BGC Bus terminal beside McKinley Exchange Corporate Center, across EDSA from One Ayala.",
+    city: "Makati",
+    area: "San Lorenzo",
+    coordinates: {
+      x: 121.0291028,
+      y: 14.5492722,
+    },
+    isActive: false,
+  },
+  {
+    name: "HSBC BGC Bus Stop",
+    slug: "hsbc-bgc-bus-stop",
+    kind: "stop",
+    description: "BGC Bus stop near HSBC Centre and Bonifacio High Street.",
+    city: "Taguig",
+    area: "Bonifacio Global City",
+    coordinates: {
+      x: 121.0485311,
+      y: 14.5535091,
+    },
+    isActive: false,
+  },
 ] satisfies NewLocation[];
 
 async function main() {
