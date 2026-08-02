@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export type JourneySummary = {
   id: string;
   slug: string;
@@ -27,6 +29,8 @@ export type JourneySummary = {
 
 type JourneySummaryCardProps = {
   journey: JourneySummary;
+  titleElement?: "h1" | "h3";
+  showDetailsLink?: boolean;
 };
 
 function formatDuration(minMinutes: number, maxMinutes: number) {
@@ -78,12 +82,19 @@ function formatTransferCount(transferCount: number) {
   return `${transferCount} transfers`;
 }
 
-export function JourneySummaryCard({ journey }: JourneySummaryCardProps) {
+export function JourneySummaryCard({
+  journey,
+  titleElement = "h3",
+  showDetailsLink = true,
+}: JourneySummaryCardProps) {
+  const Title = titleElement;
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-bold text-slate-950">{journey.title}</h3>
+          <Title className="text-lg font-bold text-slate-950">
+            {journey.title}
+          </Title>
 
           <p className="mt-1 text-sm text-slate-600">
             {journey.origin.name} <span aria-hidden="true">→</span>{" "}
@@ -144,6 +155,18 @@ export function JourneySummaryCard({ journey }: JourneySummaryCardProps) {
           {formatVerificationDate(journey.lastVerifiedAt)}
         </time>
       </p>
+
+      {showDetailsLink ? (
+        <Link
+          href={`/journeys/${journey.slug}`}
+          className="mt-5 inline-flex font-semibold text-blue-700 hover:text-blue-900 hover:underline focus:ring-4 focus:ring-blue-100 focus:outline-none"
+        >
+          View step-by-step directions
+          <span className="ml-2" aria-hidden="true">
+            →
+          </span>
+        </Link>
+      ) : null}
     </article>
   );
 }
