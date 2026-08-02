@@ -212,6 +212,52 @@ export const journeys = pgTable(
   ],
 );
 
+export const transportModeEnum = pgEnum("transport_mode", [
+  "jeepney",
+  "modern_jeepney",
+  "city_bus",
+  "bgc_bus",
+]);
+
+export const transportRoutes = pgTable(
+  "transport_routes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    slug: varchar("slug", { length: 180 }).notNull(),
+
+    name: varchar("name", { length: 180 }).notNull(),
+
+    mode: transportModeEnum("mode").notNull(),
+
+    operator: varchar("operator", { length: 160 }),
+
+    signboard: varchar("signboard", { length: 200 }),
+
+    description: text("description"),
+
+    isActive: boolean("is_active").default(false).notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [uniqueIndex("transport_routes_slug_uidx").on(table.slug)],
+);
+
+export type TransportRoute = typeof transportRoutes.$inferSelect;
+export type NewTransportRoute = typeof transportRoutes.$inferInsert;
+
 export type Journey = typeof journeys.$inferSelect;
 export type NewJourney = typeof journeys.$inferInsert;
 

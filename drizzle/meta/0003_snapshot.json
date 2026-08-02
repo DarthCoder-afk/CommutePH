@@ -1,0 +1,459 @@
+{
+  "id": "14dbec2a-ca33-4be6-821c-49aa22104110",
+  "prevId": "9bd60e6f-d577-4c32-aa08-70b61d291c33",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.journeys": {
+      "name": "journeys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(180)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin_location_id": {
+          "name": "origin_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_location_id": {
+          "name": "destination_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estimated_duration_min": {
+          "name": "estimated_duration_min",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_duration_max": {
+          "name": "estimated_duration_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_fare_min_centavos": {
+          "name": "estimated_fare_min_centavos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_fare_max_centavos": {
+          "name": "estimated_fare_max_centavos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "journey_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "last_verified_at": {
+          "name": "last_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "journeys_slug_uidx": {
+          "name": "journeys_slug_uidx",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "journeys_origin_destination_idx": {
+          "name": "journeys_origin_destination_idx",
+          "columns": [
+            {
+              "expression": "origin_location_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "destination_location_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "journeys_origin_location_id_locations_id_fk": {
+          "name": "journeys_origin_location_id_locations_id_fk",
+          "tableFrom": "journeys",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "origin_location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "journeys_destination_location_id_locations_id_fk": {
+          "name": "journeys_destination_location_id_locations_id_fk",
+          "tableFrom": "journeys",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "destination_location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "journeys_distinct_endpoints": {
+          "name": "journeys_distinct_endpoints",
+          "value": "\"journeys\".\"origin_location_id\" <> \"journeys\".\"destination_location_id\""
+        },
+        "journeys_duration_range_valid": {
+          "name": "journeys_duration_range_valid",
+          "value": "\n        (\n          \"journeys\".\"estimated_duration_min\" IS NULL\n          AND \"journeys\".\"estimated_duration_max\" IS NULL\n        )\n        OR\n        (\n          \"journeys\".\"estimated_duration_min\" IS NOT NULL\n          AND \"journeys\".\"estimated_duration_max\" IS NOT NULL\n          AND \"journeys\".\"estimated_duration_min\" >= 1\n          AND \"journeys\".\"estimated_duration_max\"\n            >= \"journeys\".\"estimated_duration_min\"\n        )\n      "
+        },
+        "journeys_fare_range_valid": {
+          "name": "journeys_fare_range_valid",
+          "value": "\n        (\n          \"journeys\".\"estimated_fare_min_centavos\" IS NULL\n          AND \"journeys\".\"estimated_fare_max_centavos\" IS NULL\n        )\n        OR\n        (\n          \"journeys\".\"estimated_fare_min_centavos\" IS NOT NULL\n          AND \"journeys\".\"estimated_fare_max_centavos\" IS NOT NULL\n          AND \"journeys\".\"estimated_fare_min_centavos\" >= 0\n          AND \"journeys\".\"estimated_fare_max_centavos\"\n            >= \"journeys\".\"estimated_fare_min_centavos\"\n        )\n      "
+        },
+        "journeys_verified_requires_date": {
+          "name": "journeys_verified_requires_date",
+          "value": "\n        \"journeys\".\"status\" <> 'verified'\n        OR \"journeys\".\"last_verified_at\" IS NOT NULL\n      "
+        },
+        "journeys_active_requires_complete_verification": {
+          "name": "journeys_active_requires_complete_verification",
+          "value": "\n        NOT \"journeys\".\"is_active\"\n        OR\n        (\n          \"journeys\".\"status\" = 'verified'\n          AND \"journeys\".\"last_verified_at\" IS NOT NULL\n          AND \"journeys\".\"estimated_duration_min\" IS NOT NULL\n          AND \"journeys\".\"estimated_duration_max\" IS NOT NULL\n          AND \"journeys\".\"estimated_fare_min_centavos\" IS NOT NULL\n          AND \"journeys\".\"estimated_fare_max_centavos\" IS NOT NULL\n        )\n      "
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.locations": {
+      "name": "locations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "varchar(180)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "location_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "area": {
+          "name": "area",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coordinates": {
+          "name": "coordinates",
+          "type": "geometry(point)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "locations_slug_uidx": {
+          "name": "locations_slug_uidx",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "locations_coordinates_gix": {
+          "name": "locations_coordinates_gix",
+          "columns": [
+            {
+              "expression": "coordinates",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gist",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "locations_coordinates_valid": {
+          "name": "locations_coordinates_valid",
+          "value": "\n        ST_X(\"locations\".\"coordinates\") BETWEEN -180 AND 180\n        AND ST_Y(\"locations\".\"coordinates\") BETWEEN -90 AND 90\n      "
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transport_routes": {
+      "name": "transport_routes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "varchar(180)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(180)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "transport_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator": {
+          "name": "operator",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signboard": {
+          "name": "signboard",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transport_routes_slug_uidx": {
+          "name": "transport_routes_slug_uidx",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.journey_status": {
+      "name": "journey_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "verified",
+        "outdated"
+      ]
+    },
+    "public.location_kind": {
+      "name": "location_kind",
+      "schema": "public",
+      "values": [
+        "area",
+        "landmark",
+        "station",
+        "terminal",
+        "stop",
+        "entrance"
+      ]
+    },
+    "public.transport_mode": {
+      "name": "transport_mode",
+      "schema": "public",
+      "values": [
+        "jeepney",
+        "modern_jeepney",
+        "city_bus",
+        "bgc_bus"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
