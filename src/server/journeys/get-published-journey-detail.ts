@@ -13,6 +13,7 @@ import {
 } from "@/server/db/schema";
 import { assembleJourneySegments } from "@/server/journeys/assemble-journey-segments";
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
+import { buildJourneyMapGeoJson } from "@/server/journeys/build-journey-map-geojson";
 
 function withoutNulls(values: Array<string | null>): string[] {
   return values.filter((value): value is string => value !== null);
@@ -233,6 +234,12 @@ export async function getPublishedJourneyDetail(slug: string) {
     routeStops: routeStopRows,
   });
 
+  const markerGeoJson = buildJourneyMapGeoJson({
+    origin,
+    destination,
+    segments,
+  });
+
   return {
     id: journey.id,
     slug: journey.slug,
@@ -256,5 +263,9 @@ export async function getPublishedJourneyDetail(slug: string) {
     verificationStatus: "verified" as const,
     lastVerifiedAt: lastVerifiedAt.toISOString(),
     segments,
+
+    map: {
+      markers: markerGeoJson,
+    },
   };
 }
