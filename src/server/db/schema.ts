@@ -311,6 +311,162 @@ export const transportRouteStops = pgTable(
   ],
 );
 
+export const journeySegmentKindEnum = pgEnum("journey_segment_kind", [
+  "walking",
+  "transit",
+]);
+
+export const journeySegments = pgTable(
+  "journey_segments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyId: uuid("journey_id")
+      .notNull()
+      .references(() => journeys.id, {
+        onDelete: "cascade",
+      }),
+
+    position: integer("position").notNull(),
+
+    kind: journeySegmentKindEnum("kind").notNull(),
+
+    summary: text("summary").notNull(),
+
+    walkingFromLocationId: uuid("walking_from_location_id").references(
+      () => locations.id,
+      {
+        onDelete: "restrict",
+      },
+    ),
+
+    walkingToLocationId: uuid("walking_to_location_id").references(
+      () => locations.id,
+      {
+        onDelete: "restrict",
+      },
+    ),
+
+    boardingRouteStopId: uuid("boarding_route_stop_id").references(
+      () => transportRouteStops.id,
+      {
+        onDelete: "restrict",
+      },
+    ),
+
+    alightingRouteStopId: uuid("alighting_route_stop_id").references(
+      () => transportRouteStops.id,
+      {
+        onDelete: "restrict",
+      },
+    ),
+
+    estimatedDurationMin: integer("estimated_duration_min"),
+
+    estimatedDurationMax: integer("estimated_duration_max"),
+
+    estimatedFareMinCentavos: integer("estimated_fare_min_centavos"),
+
+    estimatedFareMaxCentavos: integer("estimated_fare_max_centavos"),
+
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_segments_journey_position_uidx").on(
+      table.journeyId,
+      table.position,
+    ),
+
+    index("journey_segments_boarding_route_stop_idx").on(
+      table.boardingRouteStopId,
+    ),
+
+    index("journey_segments_alighting_route_stop_idx").on(
+      table.alightingRouteStopId,
+    ),
+
+    check("journey_segments_position_positive", sql`${table.position} >= 1`),
+
+    check(
+      "journey_segments_duration_range_valid",
+      sql`
+        (
+          ${table.estimatedDurationMin} IS NULL
+          AND ${table.estimatedDurationMax} IS NULL
+        )
+        OR
+        (
+          ${table.estimatedDurationMin} IS NOT NULL
+          AND ${table.estimatedDurationMax} IS NOT NULL
+          AND ${table.estimatedDurationMin} >= 1
+          AND ${table.estimatedDurationMax}
+            >= ${table.estimatedDurationMin}
+        )
+      `,
+    ),
+
+    check(
+      "journey_segments_fare_range_valid",
+      sql`
+        (
+          ${table.estimatedFareMinCentavos} IS NULL
+          AND ${table.estimatedFareMaxCentavos} IS NULL
+        )
+        OR
+        (
+          ${table.estimatedFareMinCentavos} IS NOT NULL
+          AND ${table.estimatedFareMaxCentavos} IS NOT NULL
+          AND ${table.estimatedFareMinCentavos} >= 0
+          AND ${table.estimatedFareMaxCentavos}
+            >= ${table.estimatedFareMinCentavos}
+        )
+      `,
+    ),
+
+    check(
+      "journey_segments_shape_valid",
+      sql`
+        (
+          ${table.kind} = 'walking'
+          AND ${table.walkingFromLocationId} IS NOT NULL
+          AND ${table.walkingToLocationId} IS NOT NULL
+          AND ${table.walkingFromLocationId}
+            <> ${table.walkingToLocationId}
+          AND ${table.boardingRouteStopId} IS NULL
+          AND ${table.alightingRouteStopId} IS NULL
+        )
+        OR
+        (
+          ${table.kind} = 'transit'
+          AND ${table.walkingFromLocationId} IS NULL
+          AND ${table.walkingToLocationId} IS NULL
+          AND ${table.boardingRouteStopId} IS NOT NULL
+          AND ${table.alightingRouteStopId} IS NOT NULL
+          AND ${table.boardingRouteStopId}
+            <> ${table.alightingRouteStopId}
+        )
+      `,
+    ),
+  ],
+);
+
+export type JourneySegment = typeof journeySegments.$inferSelect;
+export type NewJourneySegment = typeof journeySegments.$inferInsert;
+
 export type TransportRouteStop = typeof transportRouteStops.$inferSelect;
 export type NewTransportRouteStop = typeof transportRouteStops.$inferInsert;
 

@@ -36,6 +36,13 @@
       "when": 1785634478814,
       "tag": "0004_large_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785634770772,
+      "tag": "0005_lonely_millenium_guard",
+      "breakpoints": true
     }
   ]
 }
