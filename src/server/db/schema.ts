@@ -212,6 +212,89 @@ export const journeys = pgTable(
   ],
 );
 
+export const journeySourceTypeEnum = pgEnum("journey_source_type", [
+  "official_web",
+  "operator_social",
+  "field_check",
+]);
+
+export const journeySources = pgTable(
+  "journey_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyId: uuid("journey_id")
+      .notNull()
+      .references(() => journeys.id, {
+        onDelete: "cascade",
+      }),
+
+    sourceType: journeySourceTypeEnum("source_type").notNull(),
+
+    title: varchar("title", {
+      length: 200,
+    }).notNull(),
+
+    publisher: varchar("publisher", {
+      length: 160,
+    }).notNull(),
+
+    url: varchar("url", {
+      length: 500,
+    }),
+
+    checkedAt: timestamp("checked_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_sources_journey_url_uidx").on(
+      table.journeyId,
+      table.url,
+    ),
+
+    index("journey_sources_journey_checked_at_idx").on(
+      table.journeyId,
+      table.checkedAt,
+    ),
+
+    check(
+      "journey_sources_title_not_blank",
+      sql`length(btrim(${table.title})) > 0`,
+    ),
+
+    check(
+      "journey_sources_publisher_not_blank",
+      sql`length(btrim(${table.publisher})) > 0`,
+    ),
+
+    check(
+      "journey_sources_web_requires_url",
+      sql`
+        ${table.sourceType} = 'field_check'
+        OR ${table.url} IS NOT NULL
+      `,
+    ),
+  ],
+);
+
 export const transportModeEnum = pgEnum("transport_mode", [
   "jeepney",
   "modern_jeepney",
@@ -528,3 +611,6 @@ export type NewJourney = typeof journeys.$inferInsert;
 
 export type Location = typeof locations.$inferSelect;
 export type NewLocation = typeof locations.$inferInsert;
+
+export type JourneySource = typeof journeySources.$inferSelect;
+export type NewJourneySource = typeof journeySources.$inferInsert;
