@@ -21,7 +21,8 @@
     "db:seed-draft-routes": "tsx scripts/seed-draft-routes.ts",
     "db:seed-draft-journey": "tsx scripts/seed-draft-journey.ts",
     "db:check-draft-journey": "tsx scripts/check-draft-journey.ts",
-    "db:check-journey-readiness": "tsx scripts/check-journey-readiness.ts"
+    "db:check-journey-readiness": "tsx scripts/check-journey-readiness.ts",
+    "test:journey-estimates": "tsx --test src/server/journeys/calculate-journey-estimates.test.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
