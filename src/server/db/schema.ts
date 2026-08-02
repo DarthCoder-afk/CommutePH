@@ -278,6 +278,14 @@ export const transportRouteStops = pgTable(
 
     canAlight: boolean("can_alight").default(true).notNull(),
 
+    pickupLandmark: varchar("pickup_landmark", {
+      length: 240,
+    }),
+
+    dropoffLandmark: varchar("dropoff_landmark", {
+      length: 240,
+    }),
+
     pickupInstructions: text("pickup_instructions"),
 
     dropoffInstructions: text("dropoff_instructions"),
@@ -463,6 +471,48 @@ export const journeySegments = pgTable(
     ),
   ],
 );
+
+export const journeySteps = pgTable(
+  "journey_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeySegmentId: uuid("journey_segment_id")
+      .notNull()
+      .references(() => journeySegments.id, {
+        onDelete: "cascade",
+      }),
+
+    position: integer("position").notNull(),
+
+    instruction: text("instruction").notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_steps_segment_position_uidx").on(
+      table.journeySegmentId,
+      table.position,
+    ),
+
+    check("journey_steps_position_positive", sql`${table.position} >= 1`),
+  ],
+);
+
+export type JourneyStep = typeof journeySteps.$inferSelect;
+export type NewJourneyStep = typeof journeySteps.$inferInsert;
 
 export type JourneySegment = typeof journeySegments.$inferSelect;
 export type NewJourneySegment = typeof journeySegments.$inferInsert;

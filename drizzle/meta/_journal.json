@@ -43,6 +43,13 @@
       "when": 1785634770772,
       "tag": "0005_lonely_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785635042622,
+      "tag": "0006_black_prodigy",
+      "breakpoints": true
     }
   ]
 }
