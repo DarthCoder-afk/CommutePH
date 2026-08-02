@@ -29,6 +29,13 @@ type ApiErrorResponse = {
   };
 };
 
+type HealthResponse = {
+  status: "ok" | "unavailable";
+  checks: {
+    database: "ok" | "unavailable";
+  };
+};
+
 const applicationUrl = process.env.APP_URL ?? "http://localhost:3000";
 
 function createUrl(pathname: string, parameters?: Record<string, string>) {
@@ -65,6 +72,23 @@ async function fetchJson(
 
 async function main() {
   console.log(`Checking public application at ${applicationUrl}`);
+
+  const healthResponse = (await fetchJson(
+    "/api/health",
+    200,
+  )) as HealthResponse;
+
+  assert.equal(
+    healthResponse.status,
+    "ok",
+    "The application health status is not ok.",
+  );
+
+  assert.equal(
+    healthResponse.checks.database,
+    "ok",
+    "The database health status is not ok.",
+  );
 
   const activeLocationResponse = (await fetchJson("/api/locations", 200, {
     q: "One Ayala",
