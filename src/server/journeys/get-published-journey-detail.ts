@@ -8,25 +8,14 @@ import {
   journeySteps,
   journeys,
   locations,
+  transportRoutes,
+  transportRouteStops,
 } from "@/server/db/schema";
+import { assembleJourneySegments } from "@/server/journeys/assemble-journey-segments";
+import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
 
-function getOptionalRange(
-  minimum: number | null,
-  maximum: number | null,
-  label: string,
-) {
-  if (minimum === null && maximum === null) {
-    return null;
-  }
-
-  if (minimum === null || maximum === null) {
-    throw new Error(`${label} has an incomplete range.`);
-  }
-
-  return {
-    minimum,
-    maximum,
-  };
+function withoutNulls(values: Array<string | null>): string[] {
+  return values.filter((value): value is string => value !== null);
 }
 
 export async function getPublishedJourneyDetail(slug: string) {
@@ -42,7 +31,6 @@ export async function getPublishedJourneyDetail(slug: string) {
       estimatedDurationMax: journeys.estimatedDurationMax,
       estimatedFareMinCentavos: journeys.estimatedFareMinCentavos,
       estimatedFareMaxCentavos: journeys.estimatedFareMaxCentavos,
-      status: journeys.status,
       lastVerifiedAt: journeys.lastVerifiedAt,
     })
     .from(journeys)
@@ -59,42 +47,20 @@ export async function getPublishedJourneyDetail(slug: string) {
     return null;
   }
 
-  const endpointRows = await db
-    .select({
-      id: locations.id,
-      slug: locations.slug,
-      name: locations.name,
-    })
-    .from(locations)
-    .where(
-      and(
-        inArray(locations.id, [
-          journey.originLocationId,
-          journey.destinationLocationId,
-        ]),
-        eq(locations.isActive, true),
-      ),
-    );
-
-  const endpointsById = new Map(
-    endpointRows.map((location) => [location.id, location]),
-  );
-
-  const origin = endpointsById.get(journey.originLocationId);
-  const destination = endpointsById.get(journey.destinationLocationId);
-
-  if (!origin || !destination) {
-    throw new Error(
-      `Published journey "${journey.slug}" has an inactive or missing endpoint.`,
-    );
-  }
+  const {
+    estimatedDurationMin,
+    estimatedDurationMax,
+    estimatedFareMinCentavos,
+    estimatedFareMaxCentavos,
+    lastVerifiedAt,
+  } = journey;
 
   if (
-    journey.estimatedDurationMin === null ||
-    journey.estimatedDurationMax === null ||
-    journey.estimatedFareMinCentavos === null ||
-    journey.estimatedFareMaxCentavos === null ||
-    journey.lastVerifiedAt === null
+    estimatedDurationMin === null ||
+    estimatedDurationMax === null ||
+    estimatedFareMinCentavos === null ||
+    estimatedFareMaxCentavos === null ||
+    lastVerifiedAt === null
   ) {
     throw new Error(
       `Published journey "${journey.slug}" has incomplete verification data.`,
@@ -107,6 +73,10 @@ export async function getPublishedJourneyDetail(slug: string) {
       position: journeySegments.position,
       kind: journeySegments.kind,
       summary: journeySegments.summary,
+      walkingFromLocationId: journeySegments.walkingFromLocationId,
+      walkingToLocationId: journeySegments.walkingToLocationId,
+      boardingRouteStopId: journeySegments.boardingRouteStopId,
+      alightingRouteStopId: journeySegments.alightingRouteStopId,
       estimatedDurationMin: journeySegments.estimatedDurationMin,
       estimatedDurationMax: journeySegments.estimatedDurationMax,
       estimatedFareMinCentavos: journeySegments.estimatedFareMinCentavos,
@@ -122,6 +92,28 @@ export async function getPublishedJourneyDetail(slug: string) {
     );
   }
 
+  const calculation = calculateJourneyEstimates(segmentRows);
+
+  if (
+    estimatedDurationMin !== calculation.estimatedDuration.minMinutes ||
+    estimatedDurationMax !== calculation.estimatedDuration.maxMinutes
+  ) {
+    throw new Error(
+      `Published journey "${journey.slug}" duration totals do not match its segments.`,
+    );
+  }
+
+  if (
+    estimatedFareMinCentavos !== calculation.estimatedFare.minCentavos ||
+    estimatedFareMaxCentavos !== calculation.estimatedFare.maxCentavos
+  ) {
+    throw new Error(
+      `Published journey "${journey.slug}" fare totals do not match its segments.`,
+    );
+  }
+
+  const segmentIds = segmentRows.map((segment) => segment.id);
+
   const stepRows = await db
     .select({
       id: journeySteps.id,
@@ -130,81 +122,116 @@ export async function getPublishedJourneyDetail(slug: string) {
       instruction: journeySteps.instruction,
     })
     .from(journeySteps)
-    .where(
-      inArray(
-        journeySteps.journeySegmentId,
-        segmentRows.map((segment) => segment.id),
-      ),
-    )
+    .where(inArray(journeySteps.journeySegmentId, segmentIds))
     .orderBy(asc(journeySteps.position));
 
-  const stepsBySegmentId = new Map<
-    string,
-    Array<{
-      id: string;
-      position: number;
-      instruction: string;
-    }>
-  >();
+  const routeStopIds = [
+    ...new Set(
+      withoutNulls(
+        segmentRows.flatMap((segment) => [
+          segment.boardingRouteStopId,
+          segment.alightingRouteStopId,
+        ]),
+      ),
+    ),
+  ];
 
-  for (const step of stepRows) {
-    const segmentSteps = stepsBySegmentId.get(step.journeySegmentId) ?? [];
+  const routeStopRows =
+    routeStopIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: transportRouteStops.id,
+            transportRouteId: transportRouteStops.transportRouteId,
+            locationId: transportRouteStops.locationId,
+            position: transportRouteStops.position,
+            canBoard: transportRouteStops.canBoard,
+            canAlight: transportRouteStops.canAlight,
+            pickupLandmark: transportRouteStops.pickupLandmark,
+            dropoffLandmark: transportRouteStops.dropoffLandmark,
+            pickupInstructions: transportRouteStops.pickupInstructions,
+            dropoffInstructions: transportRouteStops.dropoffInstructions,
+          })
+          .from(transportRouteStops)
+          .where(inArray(transportRouteStops.id, routeStopIds));
 
-    segmentSteps.push({
-      id: step.id,
-      position: step.position,
-      instruction: step.instruction,
-    });
+  const routeIds = [
+    ...new Set(routeStopRows.map((routeStop) => routeStop.transportRouteId)),
+  ];
 
-    stepsBySegmentId.set(step.journeySegmentId, segmentSteps);
+  const routeRows =
+    routeIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: transportRoutes.id,
+            slug: transportRoutes.slug,
+            name: transportRoutes.name,
+            mode: transportRoutes.mode,
+            operator: transportRoutes.operator,
+            signboard: transportRoutes.signboard,
+          })
+          .from(transportRoutes)
+          .where(
+            and(
+              inArray(transportRoutes.id, routeIds),
+              eq(transportRoutes.isActive, true),
+            ),
+          );
+
+  const walkingLocationIds = withoutNulls(
+    segmentRows.flatMap((segment) => [
+      segment.walkingFromLocationId,
+      segment.walkingToLocationId,
+    ]),
+  );
+
+  const locationIds = [
+    ...new Set([
+      journey.originLocationId,
+      journey.destinationLocationId,
+      ...walkingLocationIds,
+      ...routeStopRows.map((routeStop) => routeStop.locationId),
+    ]),
+  ];
+
+  const rawLocationRows = await db
+    .select({
+      id: locations.id,
+      slug: locations.slug,
+      name: locations.name,
+      coordinates: locations.coordinates,
+    })
+    .from(locations)
+    .where(
+      and(inArray(locations.id, locationIds), eq(locations.isActive, true)),
+    );
+
+  const locationRows = rawLocationRows.map(({ coordinates, ...location }) => ({
+    ...location,
+    longitude: coordinates.x,
+    latitude: coordinates.y,
+  }));
+  const locationsById = new Map(
+    locationRows.map((location) => [location.id, location]),
+  );
+
+  const origin = locationsById.get(journey.originLocationId);
+  const destination = locationsById.get(journey.destinationLocationId);
+
+  if (!origin || !destination) {
+    throw new Error(
+      `Published journey "${journey.slug}" has an inactive or missing endpoint.`,
+    );
   }
 
-  const segments = segmentRows.map((segment) => {
-    const steps = stepsBySegmentId.get(segment.id) ?? [];
-
-    if (steps.length === 0) {
-      throw new Error(
-        `Published journey "${journey.slug}" has a segment without instructions.`,
-      );
-    }
-
-    const durationRange = getOptionalRange(
-      segment.estimatedDurationMin,
-      segment.estimatedDurationMax,
-      `Journey segment ${segment.position} duration`,
-    );
-
-    const fareRange = getOptionalRange(
-      segment.estimatedFareMinCentavos,
-      segment.estimatedFareMaxCentavos,
-      `Journey segment ${segment.position} fare`,
-    );
-
-    return {
-      id: segment.id,
-      position: segment.position,
-      kind: segment.kind,
-      summary: segment.summary,
-      estimatedDuration: durationRange
-        ? {
-            minMinutes: durationRange.minimum,
-            maxMinutes: durationRange.maximum,
-          }
-        : null,
-      estimatedFare: fareRange
-        ? {
-            minCentavos: fareRange.minimum,
-            maxCentavos: fareRange.maximum,
-            currency: "PHP" as const,
-          }
-        : null,
-      steps,
-    };
+  const segments = assembleJourneySegments({
+    segments: segmentRows,
+    steps: stepRows,
+    locations: locationRows,
+    routes: routeRows,
+    routeStops: routeStopRows,
   });
-
-  const transitSegmentCount = segments.filter(
-    (segment) => segment.kind === "transit",
-  ).length;
 
   return {
     id: journey.id,
@@ -214,23 +241,20 @@ export async function getPublishedJourneyDetail(slug: string) {
     origin: {
       slug: origin.slug,
       name: origin.name,
+      longitude: origin.longitude,
+      latitude: origin.latitude,
     },
     destination: {
       slug: destination.slug,
       name: destination.name,
+      longitude: destination.longitude,
+      latitude: destination.latitude,
     },
-    estimatedDuration: {
-      minMinutes: journey.estimatedDurationMin,
-      maxMinutes: journey.estimatedDurationMax,
-    },
-    estimatedFare: {
-      minCentavos: journey.estimatedFareMinCentavos,
-      maxCentavos: journey.estimatedFareMaxCentavos,
-      currency: "PHP" as const,
-    },
-    transferCount: Math.max(0, transitSegmentCount - 1),
+    estimatedDuration: calculation.estimatedDuration,
+    estimatedFare: calculation.estimatedFare,
+    transferCount: calculation.transferCount,
     verificationStatus: "verified" as const,
-    lastVerifiedAt: journey.lastVerifiedAt.toISOString(),
+    lastVerifiedAt: lastVerifiedAt.toISOString(),
     segments,
   };
 }

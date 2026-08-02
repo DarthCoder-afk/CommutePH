@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { JourneySegmentCard } from "@/components/journey-segment-card";
 import { JourneySummaryCard } from "@/components/journey-summary-card";
 import { getPublishedJourneyDetail } from "@/server/journeys/get-published-journey-detail";
 
@@ -59,41 +60,7 @@ export default async function JourneyPage({ params }: JourneyPageProps) {
           <ol className="mt-5 space-y-5">
             {journey.segments.map((segment) => (
               <li key={segment.id}>
-                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                      Segment {segment.position}
-                    </span>
-
-                    <span className="text-sm font-semibold text-slate-600">
-                      {segment.kind === "walking"
-                        ? "Walking"
-                        : "Public transport"}
-                    </span>
-                  </div>
-
-                  <h3 className="mt-4 text-lg font-bold">{segment.summary}</h3>
-
-                  <ol className="mt-5 space-y-4">
-                    {segment.steps.map((step) => (
-                      <li key={step.id} className="flex items-start gap-3">
-                        <span
-                          aria-hidden="true"
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white"
-                        >
-                          {step.position}
-                        </span>
-
-                        <p className="pt-0.5 leading-6 text-slate-700">
-                          <span className="sr-only">
-                            Step {step.position}:{" "}
-                          </span>
-                          {step.instruction}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                </article>
+                <JourneySegmentCard segment={segment} />
               </li>
             ))}
           </ol>
