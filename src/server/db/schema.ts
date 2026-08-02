@@ -255,6 +255,65 @@ export const transportRoutes = pgTable(
   (table) => [uniqueIndex("transport_routes_slug_uidx").on(table.slug)],
 );
 
+export const transportRouteStops = pgTable(
+  "transport_route_stops",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    transportRouteId: uuid("transport_route_id")
+      .notNull()
+      .references(() => transportRoutes.id, {
+        onDelete: "cascade",
+      }),
+
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, {
+        onDelete: "restrict",
+      }),
+
+    position: integer("position").notNull(),
+
+    canBoard: boolean("can_board").default(true).notNull(),
+
+    canAlight: boolean("can_alight").default(true).notNull(),
+
+    pickupInstructions: text("pickup_instructions"),
+
+    dropoffInstructions: text("dropoff_instructions"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("transport_route_stops_route_position_uidx").on(
+      table.transportRouteId,
+      table.position,
+    ),
+
+    index("transport_route_stops_location_idx").on(table.locationId),
+
+    check(
+      "transport_route_stops_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+  ],
+);
+
+export type TransportRouteStop = typeof transportRouteStops.$inferSelect;
+export type NewTransportRouteStop = typeof transportRouteStops.$inferInsert;
+
 export type TransportRoute = typeof transportRoutes.$inferSelect;
 export type NewTransportRoute = typeof transportRoutes.$inferInsert;
 

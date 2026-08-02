@@ -29,6 +29,13 @@
       "when": 1785634263562,
       "tag": "0003_stiff_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785634478814,
+      "tag": "0004_large_vanisher",
+      "breakpoints": true
     }
   ]
 }
