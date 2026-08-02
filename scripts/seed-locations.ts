@@ -7,15 +7,42 @@ import { locations, type NewLocation } from "@/server/db/schema";
 
 const seedLocations = [
   {
-    name: "PITX",
-    slug: "pitx",
-    kind: "terminal",
-    description: "Integrated public transport terminal in Parañaque.",
-    city: "Parañaque",
-    area: "Tambo",
+    name: "Cubao MRT-3 Station",
+    slug: "cubao-mrt-3-station",
+    kind: "station",
+    description: "MRT-3 station serving the Cubao area along EDSA.",
+    city: "Quezon City",
+    area: "Cubao",
     coordinates: {
-      x: 120.9913732,
-      y: 14.5099649,
+      x: 121.0510726,
+      y: 14.6194837,
+    },
+    isActive: true,
+  },
+  {
+    name: "Eastwood City",
+    slug: "eastwood-city",
+    kind: "area",
+    description: "Mixed-use district and commuter destination in Bagumbayan.",
+    city: "Quezon City",
+    area: "Bagumbayan",
+    coordinates: {
+      x: 121.0799721,
+      y: 14.609613,
+    },
+    isActive: true,
+  },
+  {
+    name: "BGC High Street",
+    slug: "bgc-high-street",
+    kind: "landmark",
+    description:
+      "Major pedestrian and commercial destination in Bonifacio Global City.",
+    city: "Taguig",
+    area: "Bonifacio Global City",
+    coordinates: {
+      x: 121.0493256,
+      y: 14.5511925,
     },
     isActive: true,
   },
@@ -29,19 +56,6 @@ const seedLocations = [
     coordinates: {
       x: 121.0279287,
       y: 14.5504667,
-    },
-    isActive: true,
-  },
-  {
-    name: "Monumento LRT-1 Station",
-    slug: "monumento-lrt-1-station",
-    kind: "station",
-    description: "LRT-1 station serving the Monumento area in Caloocan.",
-    city: "Caloocan",
-    area: "Grace Park",
-    coordinates: {
-      x: 120.9838745,
-      y: 14.6543118,
     },
     isActive: true,
   },
