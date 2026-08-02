@@ -3,15 +3,13 @@
 import { useRef, useState, type FormEvent } from "react";
 
 import {
+  JourneySummaryCard,
+  type JourneySummary,
+} from "@/components/journey-summary-card";
+import {
   LocationSearchInput,
   type LocationOption,
 } from "@/components/location-search-input";
-
-type JourneySummary = {
-  id: string;
-  slug: string;
-  title: string;
-};
 
 type JourneySearchSuccess = {
   data: JourneySummary[];
@@ -183,18 +181,18 @@ export function CommuteSearchForm() {
               : "border-blue-200 bg-blue-50 text-blue-900"
           }`}
         >
-          <p>{message}</p>
-
-          {status === "success" && journeys.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {journeys.map((journey) => (
-                <li key={journey.id} className="font-semibold">
-                  {journey.title}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {message}
         </div>
+      ) : null}
+
+      {status === "success" && journeys.length > 0 ? (
+        <ul aria-label="Journey results" className="space-y-4">
+          {journeys.map((journey) => (
+            <li key={journey.id}>
+              <JourneySummaryCard journey={journey} />
+            </li>
+          ))}
+        </ul>
       ) : null}
     </form>
   );
