@@ -1,12 +1,24 @@
 import "dotenv/config";
 
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-import { journeys, locations } from "@/server/db/schema";
+import {
+  journeySegments,
+  journeySteps,
+  journeys,
+  locations,
+  transportRoutes,
+  transportRouteStops,
+} from "@/server/db/schema";
 
-const requiredLocationSlugs = ["one-ayala-terminal", "bgc-high-street"];
+const requiredLocationSlugs = [
+  "one-ayala-terminal",
+  "bgc-high-street",
+  "bgc-bus-edsa-ayala-terminal",
+  "hsbc-bgc-bus-stop",
+];
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -20,7 +32,7 @@ async function main() {
   const db = drizzle(pool);
 
   try {
-    const journey = await db.transaction(async (transaction) => {
+    const result = await db.transaction(async (transaction) => {
       const locationRows = await transaction
         .select({
           id: locations.id,
@@ -33,15 +45,73 @@ async function main() {
         locationRows.map((location) => [location.slug, location]),
       );
 
-      const origin = locationsBySlug.get("one-ayala-terminal");
-      const destination = locationsBySlug.get("bgc-high-street");
+      function requireLocation(slug: string) {
+        const location = locationsBySlug.get(slug);
 
-      if (!origin) {
-        throw new Error('Required location "one-ayala-terminal" is missing.');
+        if (!location) {
+          throw new Error(
+            `Required location "${slug}" is missing. Run pnpm db:seed first.`,
+          );
+        }
+
+        return location;
       }
 
-      if (!destination) {
-        throw new Error('Required location "bgc-high-street" is missing.');
+      const origin = requireLocation("one-ayala-terminal");
+      const destination = requireLocation("bgc-high-street");
+      const pickupLocation = requireLocation("bgc-bus-edsa-ayala-terminal");
+      const dropoffLocation = requireLocation("hsbc-bgc-bus-stop");
+
+      const routeStopRows = await transaction
+        .select({
+          id: transportRouteStops.id,
+          position: transportRouteStops.position,
+          canBoard: transportRouteStops.canBoard,
+          canAlight: transportRouteStops.canAlight,
+          locationSlug: locations.slug,
+        })
+        .from(transportRouteStops)
+        .innerJoin(
+          transportRoutes,
+          eq(transportRoutes.id, transportRouteStops.transportRouteId),
+        )
+        .innerJoin(locations, eq(locations.id, transportRouteStops.locationId))
+        .where(eq(transportRoutes.slug, "bgc-bus-north-route"));
+
+      const routeStopsByLocationSlug = new Map(
+        routeStopRows.map((routeStop) => [routeStop.locationSlug, routeStop]),
+      );
+
+      const boardingStop = routeStopsByLocationSlug.get(
+        "bgc-bus-edsa-ayala-terminal",
+      );
+
+      const alightingStop = routeStopsByLocationSlug.get("hsbc-bgc-bus-stop");
+
+      if (!boardingStop) {
+        throw new Error(
+          "The BGC Bus EDSA Ayala boarding stop is missing. Run pnpm db:seed-draft-routes first.",
+        );
+      }
+
+      if (!alightingStop) {
+        throw new Error(
+          "The HSBC BGC Bus alighting stop is missing. Run pnpm db:seed-draft-routes first.",
+        );
+      }
+
+      if (!boardingStop.canBoard) {
+        throw new Error("The EDSA Ayala route stop does not allow boarding.");
+      }
+
+      if (!alightingStop.canAlight) {
+        throw new Error("The HSBC route stop does not allow alighting.");
+      }
+
+      if (boardingStop.position >= alightingStop.position) {
+        throw new Error(
+          "The boarding stop must appear before the alighting stop.",
+        );
       }
 
       const [seededJourney] = await transaction
@@ -91,11 +161,170 @@ async function main() {
         throw new Error("Failed to seed the draft journey.");
       }
 
-      return seededJourney;
+      const segmentDefinitions: Array<{
+        position: number;
+        kind: "walking" | "transit";
+        summary: string;
+        walkingFromLocationId: string | null;
+        walkingToLocationId: string | null;
+        boardingRouteStopId: string | null;
+        alightingRouteStopId: string | null;
+        notes: string;
+        steps: string[];
+      }> = [
+        {
+          position: 1,
+          kind: "walking",
+          summary: "Walk from One Ayala to the BGC Bus EDSA Ayala Terminal.",
+          walkingFromLocationId: origin.id,
+          walkingToLocationId: pickupLocation.id,
+          boardingRouteStopId: null,
+          alightingRouteStopId: null,
+          notes:
+            "Draft: pedestrian path and accessibility details require onsite verification.",
+          steps: [
+            "Inside One Ayala, follow signs toward MRT-3 Ayala Station.",
+            "Use the elevated pedestrian connection to cross EDSA toward McKinley Exchange Corporate Center.",
+            "Proceed to the BGC Bus terminal and find the North Route queue.",
+          ],
+        },
+        {
+          position: 2,
+          kind: "transit",
+          summary: "Take the BGC Bus North Route from EDSA Ayala to HSBC.",
+          walkingFromLocationId: null,
+          walkingToLocationId: null,
+          boardingRouteStopId: boardingStop.id,
+          alightingRouteStopId: alightingStop.id,
+          notes:
+            "Draft: confirm the route, fare, schedule, payment method, and stop usage onsite.",
+          steps: [
+            "Confirm that the bus signboard says North Route before boarding.",
+            "Board at the BGC Bus EDSA Ayala Terminal.",
+            "Alight at the designated HSBC stop along 5th Avenue.",
+          ],
+        },
+        {
+          position: 3,
+          kind: "walking",
+          summary: "Walk from the HSBC BGC Bus stop to BGC High Street.",
+          walkingFromLocationId: dropoffLocation.id,
+          walkingToLocationId: destination.id,
+          boardingRouteStopId: null,
+          alightingRouteStopId: null,
+          notes:
+            "Draft: pedestrian path, crossings, and final landmark require onsite verification.",
+          steps: [
+            "From the HSBC stop, walk toward Bonifacio High Street.",
+            "Use the designated pedestrian crossing and continue to the selected High Street entrance.",
+          ],
+        },
+      ];
+
+      const seededSteps = [];
+
+      const seededSegments = [];
+
+      for (const segment of segmentDefinitions) {
+        const [seededSegment] = await transaction
+          .insert(journeySegments)
+          .values({
+            journeyId: seededJourney.id,
+            position: segment.position,
+            kind: segment.kind,
+            summary: segment.summary,
+            walkingFromLocationId: segment.walkingFromLocationId,
+            walkingToLocationId: segment.walkingToLocationId,
+            boardingRouteStopId: segment.boardingRouteStopId,
+            alightingRouteStopId: segment.alightingRouteStopId,
+            estimatedDurationMin: null,
+            estimatedDurationMax: null,
+            estimatedFareMinCentavos: null,
+            estimatedFareMaxCentavos: null,
+            notes: segment.notes,
+          })
+          .onConflictDoUpdate({
+            target: [journeySegments.journeyId, journeySegments.position],
+            set: {
+              kind: segment.kind,
+              summary: segment.summary,
+              walkingFromLocationId: segment.walkingFromLocationId,
+              walkingToLocationId: segment.walkingToLocationId,
+              boardingRouteStopId: segment.boardingRouteStopId,
+              alightingRouteStopId: segment.alightingRouteStopId,
+              estimatedDurationMin: null,
+              estimatedDurationMax: null,
+              estimatedFareMinCentavos: null,
+              estimatedFareMaxCentavos: null,
+              notes: segment.notes,
+              updatedAt: new Date(),
+            },
+          })
+          .returning({
+            id: journeySegments.id,
+            position: journeySegments.position,
+            kind: journeySegments.kind,
+            summary: journeySegments.summary,
+          });
+
+        if (!seededSegment) {
+          throw new Error(
+            `Failed to seed journey segment at position ${segment.position}.`,
+          );
+        }
+
+        seededSegments.push(seededSegment);
+
+        for (const [stepIndex, instruction] of segment.steps.entries()) {
+          const stepPosition = stepIndex + 1;
+
+          const [seededStep] = await transaction
+            .insert(journeySteps)
+            .values({
+              journeySegmentId: seededSegment.id,
+              position: stepPosition,
+              instruction,
+            })
+            .onConflictDoUpdate({
+              target: [journeySteps.journeySegmentId, journeySteps.position],
+              set: {
+                instruction,
+                updatedAt: new Date(),
+              },
+            })
+            .returning({
+              id: journeySteps.id,
+              journeySegmentId: journeySteps.journeySegmentId,
+              position: journeySteps.position,
+              instruction: journeySteps.instruction,
+            });
+
+          if (!seededStep) {
+            throw new Error(
+              `Failed to seed step ${stepPosition} for segment ${segment.position}.`,
+            );
+          }
+
+          seededSteps.push({
+            ...seededStep,
+            segmentPosition: segment.position,
+          });
+        }
+      }
+
+      return {
+        journey: seededJourney,
+        segments: seededSegments,
+        steps: seededSteps,
+      };
     });
 
-    console.table([journey]);
-    console.log(`Seeded inactive draft journey: ${journey.title}`);
+    console.table(result.segments);
+    console.table(result.steps);
+
+    console.log(
+      `Seeded inactive draft journey with ${result.segments.length} segments and ${result.steps.length} steps: ${result.journey.title}`,
+    );
   } finally {
     await pool.end();
   }
