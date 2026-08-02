@@ -14,6 +14,8 @@ import {
   transportRouteStops,
 } from "@/server/db/schema";
 
+import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
+
 const journeySlug = process.argv.slice(2).find((argument) => argument !== "--");
 
 function checkGaplessPositions(
@@ -167,6 +169,79 @@ async function main() {
         addBlocker(
           `Transit segment ${segment.position} needs a complete estimated fare.`,
         );
+      }
+    }
+
+    const positionsAreGapless = segmentRows.every(
+      (segment, index) => segment.position === index + 1,
+    );
+
+    const segmentsHaveCalculableEstimates =
+      segmentRows.length > 0 &&
+      positionsAreGapless &&
+      segmentRows.every((segment) => {
+        const durationIsComplete =
+          segment.estimatedDurationMin !== null &&
+          segment.estimatedDurationMax !== null;
+
+        if (!durationIsComplete) {
+          return false;
+        }
+
+        if (segment.kind === "walking") {
+          return true;
+        }
+
+        return (
+          segment.estimatedFareMinCentavos !== null &&
+          segment.estimatedFareMaxCentavos !== null
+        );
+      });
+
+    if (segmentsHaveCalculableEstimates) {
+      try {
+        const calculation = calculateJourneyEstimates(segmentRows);
+
+        if (calculation.transferCount > 1) {
+          addBlocker(
+            `The journey has ${calculation.transferCount} transfers, exceeding the MVP limit of one transfer.`,
+          );
+        }
+
+        const journeyTotalsAreComplete =
+          journey.estimatedDurationMin !== null &&
+          journey.estimatedDurationMax !== null &&
+          journey.estimatedFareMinCentavos !== null &&
+          journey.estimatedFareMaxCentavos !== null;
+
+        if (journeyTotalsAreComplete) {
+          if (
+            journey.estimatedDurationMin !==
+              calculation.estimatedDuration.minMinutes ||
+            journey.estimatedDurationMax !==
+              calculation.estimatedDuration.maxMinutes
+          ) {
+            addBlocker(
+              "The stored journey duration does not match the sum of its segment durations.",
+            );
+          }
+
+          if (
+            journey.estimatedFareMinCentavos !==
+              calculation.estimatedFare.minCentavos ||
+            journey.estimatedFareMaxCentavos !==
+              calculation.estimatedFare.maxCentavos
+          ) {
+            addBlocker(
+              "The stored journey fare does not match the sum of its transit segment fares.",
+            );
+          }
+        }
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Unknown calculation error.";
+
+        addBlocker(`Journey estimate calculation failed: ${reason}`);
       }
     }
 
