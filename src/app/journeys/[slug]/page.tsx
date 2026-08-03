@@ -59,12 +59,15 @@ export default async function JourneyPage({ params }: JourneyPageProps) {
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            The map shows verified journey locations. Route lines will be added
-            only when verified geometry is available.
+            The map shows only verified journey locations and route paths.
+            Journeys without verified path geometry remain marker-only.
           </p>
 
           <div className="mt-5">
-            <JourneyMap markers={journey.map.markers} />
+            <JourneyMap
+              markers={journey.map.markers}
+              paths={journey.map.paths}
+            />
           </div>
         </section>
 

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 
+import type { JourneyPathFeatureCollection } from "@/server/journeys/assemble-published-journey-paths";
+
 import type {
   JourneyMarkerFeatureCollection,
   JourneyMarkerRole,
@@ -10,6 +12,7 @@ import type {
 
 type JourneyMapProps = {
   markers: JourneyMarkerFeatureCollection;
+  paths: JourneyPathFeatureCollection;
 };
 
 type MapStatus = "loading" | "ready" | "error";
@@ -48,16 +51,24 @@ function getMarkerColor(roles: JourneyMarkerRole[]) {
   return "#be123c";
 }
 
-export function JourneyMap({ markers }: JourneyMapProps) {
+export function JourneyMap({ markers, paths }: JourneyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<MapStatus>("loading");
 
-  const hasMarkers = markers.features.length > 0;
+  const hasMapData = markers.features.length > 0 || paths.features.length > 0;
+
+  const hasWalkingPaths = paths.features.some(
+    (feature) => feature.properties.kind === "walking",
+  );
+
+  const hasTransitPaths = paths.features.some(
+    (feature) => feature.properties.kind === "transit",
+  );
 
   useEffect(() => {
     const container = containerRef.current;
 
-    if (!container || markers.features.length === 0) {
+    if (!container || !hasMapData) {
       return;
     }
 
@@ -67,7 +78,9 @@ export function JourneyMap({ markers }: JourneyMapProps) {
     const renderedMarkers: maplibregl.Marker[] = [];
 
     try {
-      const firstCoordinates = markers.features[0]?.geometry.coordinates;
+      const firstCoordinates =
+        markers.features[0]?.geometry.coordinates ??
+        paths.features[0]?.geometry.coordinates[0];
 
       if (!firstCoordinates) {
         throw new Error("The journey map has no initial coordinates.");
@@ -92,11 +105,15 @@ export function JourneyMap({ markers }: JourneyMapProps) {
 
       const bounds = new maplibregl.LngLatBounds();
 
+      let boundedCoordinateCount = 0;
+
       for (const feature of markers.features) {
         const coordinates = feature.geometry.coordinates;
         const rolesLabel = formatMarkerRoles(feature.properties.roles);
 
         bounds.extend(coordinates);
+
+        boundedCoordinateCount += 1;
 
         const markerElement = document.createElement("button");
 
@@ -144,7 +161,14 @@ export function JourneyMap({ markers }: JourneyMapProps) {
         renderedMarkers.push(marker);
       }
 
-      if (markers.features.length === 1) {
+      for (const feature of paths.features) {
+        for (const coordinates of feature.geometry.coordinates) {
+          bounds.extend(coordinates);
+          boundedCoordinateCount += 1;
+        }
+      }
+
+      if (boundedCoordinateCount === 1) {
         mapInstance.jumpTo({
           center: firstCoordinates,
           zoom: 15,
@@ -158,9 +182,51 @@ export function JourneyMap({ markers }: JourneyMapProps) {
       }
 
       mapInstance.once("load", () => {
-        if (!disposed) {
-          setStatus("ready");
+        if (disposed || !mapInstance) {
+          return;
         }
+
+        if (paths.features.length > 0) {
+          mapInstance.addSource("journey-paths", {
+            type: "geojson",
+            data: paths,
+          });
+
+          mapInstance.addLayer({
+            id: "journey-transit-paths",
+            type: "line",
+            source: "journey-paths",
+            filter: ["==", ["get", "kind"], "transit"],
+            layout: {
+              "line-cap": "round",
+              "line-join": "round",
+            },
+            paint: {
+              "line-color": "#2563eb",
+              "line-width": 5,
+              "line-opacity": 0.9,
+            },
+          });
+
+          mapInstance.addLayer({
+            id: "journey-walking-paths",
+            type: "line",
+            source: "journey-paths",
+            filter: ["==", ["get", "kind"], "walking"],
+            layout: {
+              "line-cap": "round",
+              "line-join": "round",
+            },
+            paint: {
+              "line-color": "#475569",
+              "line-width": 4,
+              "line-opacity": 0.9,
+              "line-dasharray": [2, 2],
+            },
+          });
+        }
+
+        setStatus("ready");
       });
 
       mapInstance.on("error", () => {
@@ -187,9 +253,9 @@ export function JourneyMap({ markers }: JourneyMapProps) {
 
       mapInstance?.remove();
     };
-  }, [markers]);
+  }, [hasMapData, markers, paths]);
 
-  if (!hasMarkers) {
+  if (!hasMapData) {
     return (
       <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
         Map locations are unavailable for this journey.
@@ -225,6 +291,33 @@ export function JourneyMap({ markers }: JourneyMapProps) {
           </div>
         ) : null}
       </div>
+
+      {paths.features.length > 0 ? (
+        <div
+          aria-label="Journey path legend"
+          className="mt-3 flex flex-wrap gap-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"
+        >
+          {hasTransitPaths ? (
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-1 w-8 rounded-full bg-blue-600"
+              />
+              <span>Transit path</span>
+            </div>
+          ) : null}
+
+          {hasWalkingPaths ? (
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="w-8 border-t-4 border-dashed border-slate-600"
+              />
+              <span>Walking path</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <details className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer font-semibold text-slate-800">

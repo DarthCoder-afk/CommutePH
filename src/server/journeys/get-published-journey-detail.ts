@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/server/db";
 import {
@@ -16,6 +16,7 @@ import { assembleJourneySegments } from "@/server/journeys/assemble-journey-segm
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
 import { buildJourneyMapGeoJson } from "@/server/journeys/build-journey-map-geojson";
 import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
+import { assemblePublishedJourneyPaths } from "@/server/journeys/assemble-published-journey-paths";
 
 function withoutNulls(values: Array<string | null>): string[] {
   return values.filter((value): value is string => value !== null);
@@ -77,6 +78,13 @@ export async function getPublishedJourneyDetail(slug: string) {
       kind: journeySegments.kind,
       summary: journeySegments.summary,
       publicNotes: journeySegments.publicNotes,
+      pathGeoJson: sql<string | null>`
+        CASE
+          WHEN ${journeySegments.pathGeometry} IS NULL THEN NULL
+          ELSE ST_AsGeoJSON(${journeySegments.pathGeometry})
+        END
+      `,
+      pathLastVerifiedAt: journeySegments.pathLastVerifiedAt,
       walkingFromLocationId: journeySegments.walkingFromLocationId,
       walkingToLocationId: journeySegments.walkingToLocationId,
       boardingRouteStopId: journeySegments.boardingRouteStopId,
@@ -207,14 +215,14 @@ export async function getPublishedJourneyDetail(slug: string) {
           )
           .orderBy(asc(transportRouteSchedules.position));
 
-  const scheduleAssemblyTime = new Date();
+  const publicDataAssemblyTime = new Date();
 
   const routesWithSchedules = routeRows.map((route) => ({
     ...route,
     schedules: assemblePublishedRouteSchedules(
       route.id,
       scheduleRows,
-      scheduleAssemblyTime,
+      publicDataAssemblyTime,
     ),
   }));
 
@@ -278,6 +286,11 @@ export async function getPublishedJourneyDetail(slug: string) {
     segments,
   });
 
+  const pathGeoJson = assemblePublishedJourneyPaths(
+    segmentRows,
+    publicDataAssemblyTime,
+  );
+
   return {
     id: journey.id,
     slug: journey.slug,
@@ -304,6 +317,7 @@ export async function getPublishedJourneyDetail(slug: string) {
 
     map: {
       markers: markerGeoJson,
+      paths: pathGeoJson,
     },
   };
 }
