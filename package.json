@@ -31,7 +31,7 @@
     "test:http-responses": "tsx --test src/server/http/json-no-store.test.ts",
     "test:verification-freshness": "tsx --test src/server/verification/verification-freshness.test.ts",
     "test:map-style-url": "tsx --test src/config/map-style-url.test.ts",
-    "test": "tsx --test src/config/*.test.ts src/server/*/*.test.ts",
+    "test": "tsx --test src/config/*.test.ts src/lib/*/*.test.ts src/server/*/*.test.ts",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "check:public-release": "tsx scripts/check-public-release.ts"
   },
