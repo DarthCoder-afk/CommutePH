@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { ArrowUpDown, SearchX } from "lucide-react";
 
 import {
@@ -31,6 +37,58 @@ type JourneySearchFailure = {
 
 type SubmissionStatus = "idle" | "loading" | "success" | "error";
 
+const persistedSearchKey = "commutemap:last-search";
+
+type PersistedSearch = {
+  origin: LocationOption;
+  destination: LocationOption;
+};
+
+function isLocationOption(value: unknown): value is LocationOption {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const location = value as Partial<LocationOption>;
+
+  return (
+    typeof location.id === "string" &&
+    typeof location.name === "string" &&
+    typeof location.slug === "string" &&
+    typeof location.kind === "string" &&
+    typeof location.city === "string" &&
+    (location.area === null || typeof location.area === "string")
+  );
+}
+
+function readPersistedSearch(): PersistedSearch | null {
+  const storedValue = window.sessionStorage.getItem(persistedSearchKey);
+
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(storedValue) as Partial<PersistedSearch>;
+
+    if (
+      !isLocationOption(parsedValue.origin) ||
+      !isLocationOption(parsedValue.destination)
+    ) {
+      window.sessionStorage.removeItem(persistedSearchKey);
+      return null;
+    }
+
+    return {
+      origin: parsedValue.origin,
+      destination: parsedValue.destination,
+    };
+  } catch {
+    window.sessionStorage.removeItem(persistedSearchKey);
+    return null;
+  }
+}
+
 export function CommuteSearchForm() {
   const [origin, setOrigin] = useState<LocationOption | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
@@ -42,9 +100,117 @@ export function CommuteSearchForm() {
 
   const activeRequest = useRef<AbortController | null>(null);
 
+  const searchJourneys = useCallback(
+    async (
+      selectedOrigin: LocationOption,
+      selectedDestination: LocationOption,
+    ) => {
+      activeRequest.current?.abort();
+
+      const controller = new AbortController();
+      activeRequest.current = controller;
+
+      setJourneys([]);
+      setStatus("loading");
+      setMessage(null);
+
+      try {
+        const searchParams = new URLSearchParams({
+          origin: selectedOrigin.slug,
+          destination: selectedDestination.slug,
+        });
+
+        const response = await fetch(
+          `/api/journeys?${searchParams.toString()}`,
+          {
+            signal: controller.signal,
+          },
+        );
+
+        const payload = (await response.json()) as
+          JourneySearchSuccess | JourneySearchFailure;
+
+        if (!response.ok) {
+          const errorMessage =
+            "error" in payload
+              ? payload.error.message
+              : "Unable to search journeys.";
+
+          throw new Error(errorMessage);
+        }
+
+        if (!("data" in payload)) {
+          throw new Error("The journey search returned an invalid response.");
+        }
+
+        window.sessionStorage.setItem(
+          persistedSearchKey,
+          JSON.stringify({
+            origin: selectedOrigin,
+            destination: selectedDestination,
+          } satisfies PersistedSearch),
+        );
+
+        setJourneys(payload.data);
+        setStatus("success");
+
+        setMessage(
+          payload.data.length === 0
+            ? null
+            : `${payload.data.length} verified ${
+                payload.data.length === 1 ? "journey" : "journeys"
+              } found.`,
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to search journeys:", error);
+
+        setJourneys([]);
+        setStatus("error");
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to search journeys. Please try again.",
+        );
+      } finally {
+        if (activeRequest.current === controller) {
+          activeRequest.current = null;
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const persistedSearch = readPersistedSearch();
+
+    if (!persistedSearch) {
+      return;
+    }
+
+    const restoreTimeout = window.setTimeout(() => {
+      setOrigin(persistedSearch.origin);
+      setDestination(persistedSearch.destination);
+      setOriginQuery(persistedSearch.origin.name);
+      setDestinationQuery(persistedSearch.destination.name);
+
+      void searchJourneys(persistedSearch.origin, persistedSearch.destination);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(restoreTimeout);
+      activeRequest.current?.abort();
+    };
+  }, [searchJourneys]);
+
   function resetResults() {
     activeRequest.current?.abort();
     activeRequest.current = null;
+
+    window.sessionStorage.removeItem(persistedSearchKey);
 
     setJourneys([]);
     setStatus("idle");
@@ -75,7 +241,7 @@ export function CommuteSearchForm() {
     resetResults();
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!origin || !destination) {
@@ -92,70 +258,7 @@ export function CommuteSearchForm() {
       return;
     }
 
-    activeRequest.current?.abort();
-
-    const controller = new AbortController();
-    activeRequest.current = controller;
-
-    setJourneys([]);
-    setStatus("loading");
-    setMessage(null);
-
-    try {
-      const searchParams = new URLSearchParams({
-        origin: origin.slug,
-        destination: destination.slug,
-      });
-
-      const response = await fetch(`/api/journeys?${searchParams.toString()}`, {
-        signal: controller.signal,
-      });
-
-      const payload = (await response.json()) as
-        JourneySearchSuccess | JourneySearchFailure;
-
-      if (!response.ok) {
-        const errorMessage =
-          "error" in payload
-            ? payload.error.message
-            : "Unable to search journeys.";
-
-        throw new Error(errorMessage);
-      }
-
-      if (!("data" in payload)) {
-        throw new Error("The journey search returned an invalid response.");
-      }
-
-      setJourneys(payload.data);
-      setStatus("success");
-
-      setMessage(
-        payload.data.length === 0
-          ? null
-          : `${payload.data.length} verified ${
-              payload.data.length === 1 ? "journey" : "journeys"
-            } found.`,
-      );
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-
-      console.error("Failed to search journeys:", error);
-
-      setJourneys([]);
-      setStatus("error");
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to search journeys. Please try again.",
-      );
-    } finally {
-      if (activeRequest.current === controller) {
-        activeRequest.current = null;
-      }
-    }
+    void searchJourneys(origin, destination);
   }
 
   return (
