@@ -1,3 +1,5 @@
+import type { AssembledPublishedRouteSchedule } from "@/server/routes/assemble-published-route-schedules";
+
 export type SegmentLocationRecord = {
   id: string;
   slug: string;
@@ -13,6 +15,7 @@ export type SegmentRouteRecord = {
   mode: "jeepney" | "modern_jeepney" | "city_bus" | "bgc_bus";
   operator: string | null;
   signboard: string | null;
+  schedules: readonly AssembledPublishedRouteSchedule[];
 };
 
 export type SegmentRouteStopRecord = {
@@ -102,6 +105,7 @@ export type AssembledTransitSegment = AssembledSegmentBase & {
     mode: SegmentRouteRecord["mode"];
     operator: string | null;
     signboard: string | null;
+    schedules: AssembledPublishedRouteSchedule[];
   };
   boardingStop: {
     position: number;
@@ -419,6 +423,7 @@ export function assembleJourneySegments({
         mode: route.mode,
         operator: route.operator,
         signboard: route.signboard,
+        schedules: [...route.schedules],
       },
       boardingStop: {
         position: boardingStop.position,

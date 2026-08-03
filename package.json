@@ -26,6 +26,7 @@
     "test:env": "tsx --test src/config/database-url.test.ts",
     "test:journey-segments": "tsx --test src/server/journeys/assemble-journey-segments.test.ts",
     "test:journey-map": "tsx --test src/server/journeys/build-journey-map-geojson.test.ts",
+    "test:route-schedules": "tsx --test src/server/routes/assemble-published-route-schedules.test.ts",
     "check:public-release": "tsx scripts/check-public-release.ts"
   },
   "dependencies": {

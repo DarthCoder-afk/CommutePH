@@ -53,6 +53,16 @@ const PROVISIONAL_ROUTES: SegmentRouteRecord[] = [
     mode: "city_bus",
     operator: null,
     signboard: "PROVISIONAL",
+    schedules: [
+      {
+        id: "schedule-development",
+        position: 1,
+        serviceDays: "Provisional service period",
+        operatingHours: "Provisional operating window",
+        publicNotes: null,
+        lastVerifiedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
   },
 ];
 
@@ -196,6 +206,11 @@ test("assembles ordered provisional walking and transit segments", () => {
   }
 
   assert.equal(transitSegment.kind, "transit");
+
+  assert.equal(
+    transitSegment.route.schedules[0]?.serviceDays,
+    "Provisional service period",
+  );
 
   if (transitSegment.kind === "transit") {
     assert.equal(transitSegment.route.name, "Provisional Development Route");

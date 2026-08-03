@@ -36,6 +36,13 @@ function formatFare(minCentavos: number, maxCentavos: number) {
   return minCentavos === maxCentavos ? minimum : `${minimum}–${maximum}`;
 }
 
+function formatVerificationDate(value: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeZone: "Asia/Manila",
+  }).format(new Date(value));
+}
+
 export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -96,6 +103,47 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
                 <span className="font-semibold">Signboard:</span>{" "}
                 {segment.route.signboard}
               </p>
+            ) : null}
+
+            {segment.route.schedules.length > 0 ? (
+              <section
+                aria-label={`${segment.route.name} operating schedule`}
+                className="mt-4 border-t border-slate-200 pt-4"
+              >
+                <h4 className="text-sm font-bold text-slate-950">
+                  Operating schedule
+                </h4>
+
+                <ul className="mt-3 space-y-3">
+                  {segment.route.schedules.map((schedule) => (
+                    <li
+                      key={schedule.id}
+                      className="rounded-lg border border-slate-200 bg-white p-3"
+                    >
+                      <p className="text-sm font-semibold text-slate-950">
+                        {schedule.serviceDays}
+                      </p>
+
+                      <p className="mt-1 text-sm text-slate-700">
+                        {schedule.operatingHours}
+                      </p>
+
+                      {schedule.publicNotes ? (
+                        <p className="mt-2 text-sm leading-6 text-amber-900">
+                          {schedule.publicNotes}
+                        </p>
+                      ) : null}
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        Schedule verified{" "}
+                        <time dateTime={schedule.lastVerifiedAt}>
+                          {formatVerificationDate(schedule.lastVerifiedAt)}
+                        </time>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ) : null}
           </div>
 

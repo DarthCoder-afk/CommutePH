@@ -103,6 +103,7 @@ function createTransitSegment(
       mode: "city_bus",
       operator: null,
       signboard: "PROVISIONAL",
+      schedules: [],
     },
     boardingStop: {
       position: 1,

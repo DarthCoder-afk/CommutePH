@@ -9,11 +9,13 @@ import {
   journeys,
   locations,
   transportRoutes,
+  transportRouteSchedules,
   transportRouteStops,
 } from "@/server/db/schema";
 import { assembleJourneySegments } from "@/server/journeys/assemble-journey-segments";
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
 import { buildJourneyMapGeoJson } from "@/server/journeys/build-journey-map-geojson";
+import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
 
 function withoutNulls(values: Array<string | null>): string[] {
   return values.filter((value): value is string => value !== null);
@@ -180,6 +182,41 @@ export async function getPublishedJourneyDetail(slug: string) {
               eq(transportRoutes.isActive, true),
             ),
           );
+  const publishedRouteIds = routeRows.map((route) => route.id);
+
+  const scheduleRows =
+    publishedRouteIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: transportRouteSchedules.id,
+            transportRouteId: transportRouteSchedules.transportRouteId,
+            position: transportRouteSchedules.position,
+            serviceDays: transportRouteSchedules.serviceDays,
+            operatingHours: transportRouteSchedules.operatingHours,
+            publicNotes: transportRouteSchedules.publicNotes,
+            lastVerifiedAt: transportRouteSchedules.lastVerifiedAt,
+            isActive: transportRouteSchedules.isActive,
+          })
+          .from(transportRouteSchedules)
+          .where(
+            inArray(
+              transportRouteSchedules.transportRouteId,
+              publishedRouteIds,
+            ),
+          )
+          .orderBy(asc(transportRouteSchedules.position));
+
+  const scheduleAssemblyTime = new Date();
+
+  const routesWithSchedules = routeRows.map((route) => ({
+    ...route,
+    schedules: assemblePublishedRouteSchedules(
+      route.id,
+      scheduleRows,
+      scheduleAssemblyTime,
+    ),
+  }));
 
   const walkingLocationIds = withoutNulls(
     segmentRows.flatMap((segment) => [
@@ -231,7 +268,7 @@ export async function getPublishedJourneyDetail(slug: string) {
     segments: segmentRows,
     steps: stepRows,
     locations: locationRows,
-    routes: routeRows,
+    routes: routesWithSchedules,
     routeStops: routeStopRows,
   });
 
