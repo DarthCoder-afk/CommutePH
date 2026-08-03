@@ -338,6 +338,95 @@ export const transportRoutes = pgTable(
   (table) => [uniqueIndex("transport_routes_slug_uidx").on(table.slug)],
 );
 
+export const transportRouteSchedules = pgTable(
+  "transport_route_schedules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    transportRouteId: uuid("transport_route_id")
+      .notNull()
+      .references(() => transportRoutes.id, {
+        onDelete: "cascade",
+      }),
+
+    position: integer("position").notNull(),
+
+    serviceDays: varchar("service_days", {
+      length: 100,
+    }).notNull(),
+
+    operatingHours: varchar("operating_hours", {
+      length: 160,
+    }).notNull(),
+
+    publicNotes: text("public_notes"),
+
+    lastVerifiedAt: timestamp("last_verified_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    isActive: boolean("is_active").default(false).notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("transport_route_schedules_route_position_uidx").on(
+      table.transportRouteId,
+      table.position,
+    ),
+
+    index("transport_route_schedules_route_active_idx").on(
+      table.transportRouteId,
+      table.isActive,
+      table.position,
+    ),
+
+    check(
+      "transport_route_schedules_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+
+    check(
+      "transport_route_schedules_service_days_not_blank",
+      sql`length(btrim(${table.serviceDays})) > 0`,
+    ),
+
+    check(
+      "transport_route_schedules_operating_hours_not_blank",
+      sql`length(btrim(${table.operatingHours})) > 0`,
+    ),
+
+    check(
+      "transport_route_schedules_public_notes_not_blank",
+      sql`
+        ${table.publicNotes} IS NULL
+        OR length(btrim(${table.publicNotes})) > 0
+      `,
+    ),
+
+    check(
+      "transport_route_schedules_active_requires_verification",
+      sql`
+        NOT ${table.isActive}
+        OR ${table.lastVerifiedAt} IS NOT NULL
+      `,
+    ),
+  ],
+);
+
 export const transportRouteStops = pgTable(
   "transport_route_stops",
   {
@@ -612,6 +701,11 @@ export type NewJourneySegment = typeof journeySegments.$inferInsert;
 
 export type TransportRouteStop = typeof transportRouteStops.$inferSelect;
 export type NewTransportRouteStop = typeof transportRouteStops.$inferInsert;
+
+export type TransportRouteSchedule =
+  typeof transportRouteSchedules.$inferSelect;
+export type NewTransportRouteSchedule =
+  typeof transportRouteSchedules.$inferInsert;
 
 export type TransportRoute = typeof transportRoutes.$inferSelect;
 export type NewTransportRoute = typeof transportRoutes.$inferInsert;
