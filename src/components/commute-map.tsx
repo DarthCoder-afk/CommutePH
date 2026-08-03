@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, LocateFixed } from "lucide-react";
 import * as maplibregl from "maplibre-gl";
 
+import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
 import type { LocationOption } from "@/components/location-search-input";
 import { publicMapStyle } from "@/config/map-style-url";
 import {
@@ -97,6 +98,7 @@ function createCurrentLocationPopupContent() {
 }
 
 export function CommuteMap() {
+  const { selectCurrentLocation } = useCurrentLocationOrigin();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -164,6 +166,8 @@ export function CommuteMap() {
           center: coordinates,
           zoom: Math.max(map.getZoom(), 14),
         });
+
+        selectCurrentLocation({ latitude, longitude });
 
         setGeolocationStatus("success");
       },
@@ -453,7 +457,9 @@ export function CommuteMap() {
                 : "text-slate-600"
           }`}
         >
-          {geolocationStatusMessages[geolocationStatus]}
+          {geolocationStatus === "success"
+            ? "Current location is selected as your starting point. Your precise position is kept in this browser session and is not saved."
+            : geolocationStatusMessages[geolocationStatus]}
         </p>
       </div>
 

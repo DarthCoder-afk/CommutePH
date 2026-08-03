@@ -9,6 +9,7 @@ import {
 } from "react";
 import { ArrowUpDown, SearchX } from "lucide-react";
 
+import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
 import {
   JourneySummaryCard,
   type JourneySummary,
@@ -17,6 +18,7 @@ import {
   LocationSearchInput,
   type LocationOption,
 } from "@/components/location-search-input";
+import type { OriginSelection } from "@/lib/geolocation/origin-selection";
 
 type JourneySearchSuccess = {
   data: JourneySummary[];
@@ -35,7 +37,7 @@ type JourneySearchFailure = {
   };
 };
 
-type SubmissionStatus = "idle" | "loading" | "success" | "error";
+type SubmissionStatus = "idle" | "loading" | "success" | "notice" | "error";
 
 const persistedSearchKey = "commutemap:last-search";
 
@@ -94,7 +96,8 @@ function readPersistedSearch(): PersistedSearch | null {
 }
 
 export function CommuteSearchForm() {
-  const [origin, setOrigin] = useState<LocationOption | null>(null);
+  const { currentLocationOrigin } = useCurrentLocationOrigin();
+  const [origin, setOrigin] = useState<OriginSelection | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
   const [originQuery, setOriginQuery] = useState("");
   const [destinationQuery, setDestinationQuery] = useState("");
@@ -196,7 +199,10 @@ export function CommuteSearchForm() {
     }
 
     const restoreTimeout = window.setTimeout(() => {
-      setOrigin(persistedSearch.origin);
+      setOrigin({
+        type: "CURATED_LOCATION",
+        location: persistedSearch.origin,
+      });
       setDestination(persistedSearch.destination);
       setOriginQuery(persistedSearch.origin.name);
       setDestinationQuery(persistedSearch.destination.name);
@@ -210,6 +216,28 @@ export function CommuteSearchForm() {
     };
   }, [searchJourneys]);
 
+  useEffect(() => {
+    if (!currentLocationOrigin) {
+      return;
+    }
+
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    window.sessionStorage.removeItem(persistedSearchKey);
+
+    const applySuggestionTimeout = window.setTimeout(() => {
+      setOrigin(currentLocationOrigin.origin);
+      setOriginQuery("Current location");
+      setJourneys([]);
+      setStatus("idle");
+      setMessage(null);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(applySuggestionTimeout);
+    };
+  }, [currentLocationOrigin]);
+
   function resetResults() {
     activeRequest.current?.abort();
     activeRequest.current = null;
@@ -222,7 +250,14 @@ export function CommuteSearchForm() {
   }
 
   function handleOriginChange(location: LocationOption | null) {
-    setOrigin(location);
+    setOrigin(
+      location
+        ? {
+            type: "CURATED_LOCATION",
+            location,
+          }
+        : null,
+    );
     resetResults();
   }
 
@@ -232,12 +267,23 @@ export function CommuteSearchForm() {
   }
 
   function handleSwapLocations() {
-    const previousOrigin = origin;
+    if (origin?.type === "CURRENT_LOCATION") {
+      return;
+    }
+
+    const previousOrigin = origin?.location ?? null;
     const previousDestination = destination;
     const previousOriginQuery = originQuery;
     const previousDestinationQuery = destinationQuery;
 
-    setOrigin(previousDestination);
+    setOrigin(
+      previousDestination
+        ? {
+            type: "CURATED_LOCATION",
+            location: previousDestination,
+          }
+        : null,
+    );
     setDestination(previousOrigin);
     setOriginQuery(previousDestinationQuery);
     setDestinationQuery(previousOriginQuery);
@@ -255,14 +301,23 @@ export function CommuteSearchForm() {
       return;
     }
 
-    if (origin.slug === destination.slug) {
+    if (origin.type === "CURRENT_LOCATION") {
+      setJourneys([]);
+      setStatus("notice");
+      setMessage(
+        "Current location is selected. Nearby pickup journey search will be enabled after pickup candidates are added.",
+      );
+      return;
+    }
+
+    if (origin.location.slug === destination.slug) {
       setJourneys([]);
       setStatus("error");
       setMessage("Origin and destination must be different.");
       return;
     }
 
-    void searchJourneys(origin, destination);
+    void searchJourneys(origin.location, destination);
   }
 
   return (
@@ -278,7 +333,12 @@ export function CommuteSearchForm() {
           label="Starting location"
           placeholder="Try One Ayala"
           query={originQuery}
-          value={origin}
+          value={origin?.type === "CURATED_LOCATION" ? origin.location : null}
+          selectedLabel={
+            origin?.type === "CURRENT_LOCATION"
+              ? "Current location"
+              : origin?.location.name
+          }
           onQueryChange={setOriginQuery}
           onSelectionChange={handleOriginChange}
         />
@@ -289,9 +349,14 @@ export function CommuteSearchForm() {
           <button
             type="button"
             aria-label="Swap starting location and destination"
-            title="Swap locations"
+            title={
+              origin?.type === "CURRENT_LOCATION"
+                ? "Current location cannot be used as a destination"
+                : "Swap locations"
+            }
+            disabled={origin?.type === "CURRENT_LOCATION"}
             onClick={handleSwapLocations}
-            className="flex size-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:ring-4 focus:ring-blue-100 focus:outline-none"
+            className="flex size-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:ring-4 focus:ring-blue-100 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
           >
             <ArrowUpDown aria-hidden="true" className="size-5" />
           </button>

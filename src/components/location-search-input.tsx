@@ -27,6 +27,7 @@ type LocationSearchInputProps = {
   placeholder?: string;
   query: string;
   value: LocationOption | null;
+  selectedLabel?: string | null;
   onQueryChange: (query: string) => void;
   onSelectionChange: (location: LocationOption | null) => void;
 };
@@ -38,6 +39,7 @@ export function LocationSearchInput({
   placeholder = "Search locations",
   query,
   value,
+  selectedLabel = value?.name ?? null,
   onQueryChange,
   onSelectionChange,
 }: LocationSearchInputProps) {
@@ -52,7 +54,7 @@ export function LocationSearchInput({
   useEffect(() => {
     const normalizedQuery = query.trim();
 
-    if (value && query === value.name) {
+    if (selectedLabel && query === selectedLabel) {
       return;
     }
 
@@ -108,7 +110,7 @@ export function LocationSearchInput({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [query, value]);
+  }, [query, selectedLabel]);
 
   function selectLocation(location: LocationOption) {
     onQueryChange(location.name);
@@ -281,9 +283,9 @@ export function LocationSearchInput({
         </ul>
       ) : null}
 
-      {value ? (
+      {selectedLabel ? (
         <span className="sr-only" role="status" aria-live="polite">
-          Selected: {value.name}
+          Selected: {selectedLabel}
         </span>
       ) : (
         <p className="mt-2 text-sm text-slate-500">
