@@ -22,7 +22,10 @@ type LocationSearchInputProps = {
   name: string;
   label: string;
   placeholder?: string;
-  onSelectionChange?: (location: LocationOption | null) => void;
+  query: string;
+  value: LocationOption | null;
+  onQueryChange: (query: string) => void;
+  onSelectionChange: (location: LocationOption | null) => void;
 };
 
 export function LocationSearchInput({
@@ -30,12 +33,12 @@ export function LocationSearchInput({
   name,
   label,
   placeholder = "Search locations",
+  query,
+  value,
+  onQueryChange,
   onSelectionChange,
 }: LocationSearchInputProps) {
-  const [query, setQuery] = useState("");
   const [options, setOptions] = useState<LocationOption[]>([]);
-  const [selectedLocation, setSelectedLocation] =
-    useState<LocationOption | null>(null);
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -46,7 +49,7 @@ export function LocationSearchInput({
   useEffect(() => {
     const normalizedQuery = query.trim();
 
-    if (selectedLocation && query === selectedLocation.name) {
+    if (value && query === value.name) {
       return;
     }
 
@@ -102,16 +105,15 @@ export function LocationSearchInput({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [query, selectedLocation]);
+  }, [query, value]);
 
   function selectLocation(location: LocationOption) {
-    setSelectedLocation(location);
-    setQuery(location.name);
+    onQueryChange(location.name);
     setOptions([]);
     setStatus("idle");
     setActiveIndex(-1);
     setIsOpen(false);
-    onSelectionChange?.(location);
+    onSelectionChange(location);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -182,9 +184,8 @@ export function LocationSearchInput({
         }
         aria-describedby={statusId}
         onChange={(event) => {
-          setQuery(event.target.value);
-          setSelectedLocation(null);
-          onSelectionChange?.(null);
+          onQueryChange(event.target.value);
+          onSelectionChange(null);
           setOptions([]);
           setStatus("idle");
           setIsOpen(false);
@@ -203,7 +204,7 @@ export function LocationSearchInput({
         className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-950 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
       />
 
-      <input type="hidden" name={name} value={selectedLocation?.slug ?? ""} />
+      <input type="hidden" name={name} value={value?.slug ?? ""} />
 
       <div id={statusId} className="sr-only" role="status" aria-live="polite">
         {status === "loading" ? "Searching locations." : null}
@@ -277,10 +278,10 @@ export function LocationSearchInput({
         </ul>
       ) : null}
 
-      {selectedLocation ? (
-        <p className="mt-2 text-sm text-emerald-700" aria-live="polite">
-          Selected: {selectedLocation.name}
-        </p>
+      {value ? (
+        <span className="sr-only" role="status" aria-live="polite">
+          Selected: {value.name}
+        </span>
       ) : (
         <p className="mt-2 text-sm text-slate-500">
           Enter at least two characters, then select a location.

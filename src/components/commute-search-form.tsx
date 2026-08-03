@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import { ArrowUpDown } from "lucide-react";
 
 import {
   JourneySummaryCard,
@@ -33,6 +34,8 @@ type SubmissionStatus = "idle" | "loading" | "success" | "error";
 export function CommuteSearchForm() {
   const [origin, setOrigin] = useState<LocationOption | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
+  const [originQuery, setOriginQuery] = useState("");
+  const [destinationQuery, setDestinationQuery] = useState("");
   const [journeys, setJourneys] = useState<JourneySummary[]>([]);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -55,6 +58,20 @@ export function CommuteSearchForm() {
 
   function handleDestinationChange(location: LocationOption | null) {
     setDestination(location);
+    resetResults();
+  }
+
+  function handleSwapLocations() {
+    const previousOrigin = origin;
+    const previousDestination = destination;
+    const previousOriginQuery = originQuery;
+    const previousDestinationQuery = destinationQuery;
+
+    setOrigin(previousDestination);
+    setDestination(previousOrigin);
+    setOriginQuery(previousDestinationQuery);
+    setDestinationQuery(previousOriginQuery);
+
     resetResults();
   }
 
@@ -147,21 +164,45 @@ export function CommuteSearchForm() {
       aria-busy={status === "loading"}
       className="space-y-6"
     >
-      <LocationSearchInput
-        id="origin-location"
-        name="origin"
-        label="Starting location"
-        placeholder="Try One Ayala"
-        onSelectionChange={handleOriginChange}
-      />
+      <div className="space-y-4">
+        <LocationSearchInput
+          id="origin-location"
+          name="origin"
+          label="Starting location"
+          placeholder="Try One Ayala"
+          query={originQuery}
+          value={origin}
+          onQueryChange={setOriginQuery}
+          onSelectionChange={handleOriginChange}
+        />
 
-      <LocationSearchInput
-        id="destination-location"
-        name="destination"
-        label="Destination"
-        placeholder="Try BGC High Street"
-        onSelectionChange={handleDestinationChange}
-      />
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />
+
+          <button
+            type="button"
+            aria-label="Swap starting location and destination"
+            title="Swap locations"
+            onClick={handleSwapLocations}
+            className="flex size-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:ring-4 focus:ring-blue-100 focus:outline-none"
+          >
+            <ArrowUpDown aria-hidden="true" className="size-5" />
+          </button>
+
+          <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <LocationSearchInput
+          id="destination-location"
+          name="destination"
+          label="Destination"
+          placeholder="Try BGC High Street"
+          query={destinationQuery}
+          value={destination}
+          onQueryChange={setDestinationQuery}
+          onSelectionChange={handleDestinationChange}
+        />
+      </div>
 
       <button
         type="submit"
