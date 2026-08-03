@@ -16,7 +16,7 @@ export default function JourneyError({ error, reset }: JourneyErrorProps) {
   }, [error]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 text-slate-950">
+    <main className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12 text-slate-950">
       <section
         role="alert"
         aria-labelledby="journey-error-heading"

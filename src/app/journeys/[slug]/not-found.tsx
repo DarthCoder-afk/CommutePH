@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function JourneyNotFound() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 text-slate-950">
+    <main className="flex flex-1 items-center justify-center bg-slate-50 px-4 py-12 text-slate-950">
       <section
         aria-labelledby="journey-not-found-heading"
         className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
