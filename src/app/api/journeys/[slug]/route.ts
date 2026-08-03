@@ -1,4 +1,5 @@
 import { getPublishedJourneyDetail } from "@/server/journeys/get-published-journey-detail";
+import { jsonNoStore } from "@/server/http/json-no-store";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ export async function GET(_request: Request, context: JourneyRouteContext) {
   const { slug } = await context.params;
 
   if (slug.length > 200 || !journeySlugPattern.test(slug)) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "INVALID_JOURNEY_SLUG",
@@ -31,7 +32,7 @@ export async function GET(_request: Request, context: JourneyRouteContext) {
     const journey = await getPublishedJourneyDetail(slug);
 
     if (!journey) {
-      return Response.json(
+      return jsonNoStore(
         {
           error: {
             code: "JOURNEY_NOT_FOUND",
@@ -44,13 +45,13 @@ export async function GET(_request: Request, context: JourneyRouteContext) {
       );
     }
 
-    return Response.json({
+    return jsonNoStore({
       data: journey,
     });
   } catch (error) {
     console.error("Failed to load journey detail:", error);
 
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "JOURNEY_DETAIL_FAILED",

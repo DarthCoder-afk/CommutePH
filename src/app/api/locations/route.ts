@@ -3,6 +3,7 @@ import {
   locationSearchMinLength,
   searchActiveLocations,
 } from "@/server/locations/search-locations";
+import { jsonNoStore } from "@/server/http/json-no-store";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ export async function GET(request: Request) {
   const query = (searchParams.get("q") ?? "").trim();
 
   if (query.length > 0 && query.length < locationSearchMinLength) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "LOCATION_QUERY_TOO_SHORT",
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   }
 
   if (query.length > locationSearchMaxLength) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "LOCATION_QUERY_TOO_LONG",
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
   try {
     const result = await searchActiveLocations(query);
 
-    return Response.json({
+    return jsonNoStore({
       data: result,
       meta: {
         query,
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Failed to search locations:", error);
 
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "LOCATIONS_FETCH_FAILED",

@@ -28,6 +28,7 @@
     "test:journey-map": "tsx --test src/server/journeys/build-journey-map-geojson.test.ts",
     "test:route-schedules": "tsx --test src/server/routes/assemble-published-route-schedules.test.ts",
     "test:journey-paths": "tsx --test src/server/journeys/assemble-published-journey-paths.test.ts",
+    "test:http-responses": "tsx --test src/server/http/json-no-store.test.ts",
     "check:public-release": "tsx scripts/check-public-release.ts"
   },
   "dependencies": {

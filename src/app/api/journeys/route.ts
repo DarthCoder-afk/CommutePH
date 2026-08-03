@@ -1,4 +1,5 @@
 import { searchPublishedDirectJourneys } from "@/server/journeys/search-direct-journeys";
+import { jsonNoStore } from "@/server/http/json-no-store";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   const destination = (searchParams.get("destination") ?? "").trim();
 
   if (!origin || !destination) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "JOURNEY_ENDPOINTS_REQUIRED",
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
   }
 
   if (!isValidLocationSlug(origin) || !isValidLocationSlug(destination)) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "INVALID_LOCATION_SLUG",
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
   }
 
   if (origin === destination) {
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "IDENTICAL_JOURNEY_ENDPOINTS",
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
   try {
     const result = await searchPublishedDirectJourneys(origin, destination);
 
-    return Response.json({
+    return jsonNoStore({
       data: result,
       meta: {
         origin,
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Failed to search direct journeys:", error);
 
-    return Response.json(
+    return jsonNoStore(
       {
         error: {
           code: "JOURNEY_SEARCH_FAILED",

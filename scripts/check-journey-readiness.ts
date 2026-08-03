@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
@@ -16,6 +16,7 @@ import {
 } from "@/server/db/schema";
 
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
+import { assemblePublishedJourneyPaths } from "@/server/journeys/assemble-published-journey-paths";
 import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
 
 const journeySlug = process.argv.slice(2).find((argument) => argument !== "--");
@@ -130,6 +131,13 @@ async function main() {
         id: journeySegments.id,
         position: journeySegments.position,
         kind: journeySegments.kind,
+        pathGeoJson: sql<string | null>`
+          CASE
+            WHEN ${journeySegments.pathGeometry} IS NULL THEN NULL
+            ELSE ST_AsGeoJSON(${journeySegments.pathGeometry})
+          END
+        `,
+        pathLastVerifiedAt: journeySegments.pathLastVerifiedAt,
         walkingFromLocationId: journeySegments.walkingFromLocationId,
         walkingToLocationId: journeySegments.walkingToLocationId,
         boardingRouteStopId: journeySegments.boardingRouteStopId,
@@ -177,6 +185,17 @@ async function main() {
     const positionsAreGapless = segmentRows.every(
       (segment, index) => segment.position === index + 1,
     );
+
+    if (positionsAreGapless) {
+      try {
+        assemblePublishedJourneyPaths(segmentRows, currentTime);
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Unknown path error.";
+
+        addBlocker(`Journey path validation failed: ${reason}`);
+      }
+    }
 
     const segmentsHaveCalculableEstimates =
       segmentRows.length > 0 &&

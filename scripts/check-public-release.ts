@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 
+import { noStoreCacheControl } from "@/server/http/json-no-store";
+
 type LocationSearchResponse = {
   data: Array<{
     id: string;
@@ -67,6 +69,18 @@ async function fetchJson(
     }. Response: ${JSON.stringify(payload)}`,
   );
 
+  assert.match(
+    response.headers.get("content-type") ?? "",
+    /^application\/json\b/i,
+    `${url.pathname} did not return an application/json response.`,
+  );
+
+  assert.equal(
+    response.headers.get("cache-control"),
+    noStoreCacheControl,
+    `${url.pathname} did not return the required no-store cache policy.`,
+  );
+
   return payload;
 }
 
@@ -101,6 +115,31 @@ async function main() {
     "The active One Ayala location was not returned.",
   );
 
+  assert(
+    activeLocationResponse.data.every((location) => !("isActive" in location)),
+    "Internal location activation state leaked through the public API.",
+  );
+
+  const shortLocationQueryResponse = (await fetchJson("/api/locations", 400, {
+    q: "a",
+  })) as ApiErrorResponse;
+
+  assert.equal(
+    shortLocationQueryResponse.error.code,
+    "LOCATION_QUERY_TOO_SHORT",
+    "Location search did not reject a one-character query.",
+  );
+
+  const longLocationQueryResponse = (await fetchJson("/api/locations", 400, {
+    q: "a".repeat(81),
+  })) as ApiErrorResponse;
+
+  assert.equal(
+    longLocationQueryResponse.error.code,
+    "LOCATION_QUERY_TOO_LONG",
+    "Location search did not reject a query exceeding 80 characters.",
+  );
+
   const inactiveLocationResponse = (await fetchJson("/api/locations", 200, {
     q: "HSBC",
   })) as LocationSearchResponse;
@@ -109,6 +148,38 @@ async function main() {
     inactiveLocationResponse.data.length,
     0,
     "The inactive HSBC fixture leaked through public location search.",
+  );
+
+  const missingEndpointResponse = (await fetchJson("/api/journeys", 400, {
+    origin: "one-ayala-terminal",
+  })) as ApiErrorResponse;
+
+  assert.equal(
+    missingEndpointResponse.error.code,
+    "JOURNEY_ENDPOINTS_REQUIRED",
+    "Journey search did not require both endpoints.",
+  );
+
+  const invalidEndpointResponse = (await fetchJson("/api/journeys", 400, {
+    origin: "INVALID_SLUG",
+    destination: "bgc-high-street",
+  })) as ApiErrorResponse;
+
+  assert.equal(
+    invalidEndpointResponse.error.code,
+    "INVALID_LOCATION_SLUG",
+    "Journey search did not reject an invalid location slug.",
+  );
+
+  const identicalEndpointResponse = (await fetchJson("/api/journeys", 400, {
+    origin: "one-ayala-terminal",
+    destination: "one-ayala-terminal",
+  })) as ApiErrorResponse;
+
+  assert.equal(
+    identicalEndpointResponse.error.code,
+    "IDENTICAL_JOURNEY_ENDPOINTS",
+    "Journey search did not reject identical endpoints.",
   );
 
   const journeySearchResponse = (await fetchJson("/api/journeys", 200, {

@@ -1,19 +1,16 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/server/db";
+import { jsonNoStore } from "@/server/http/json-no-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const responseHeaders = {
-  "Cache-Control": "no-store, max-age=0",
-};
 
 export async function GET() {
   try {
     await db.execute(sql`select 1`);
 
-    return Response.json(
+    return jsonNoStore(
       {
         status: "ok",
         checks: {
@@ -22,13 +19,12 @@ export async function GET() {
       },
       {
         status: 200,
-        headers: responseHeaders,
       },
     );
   } catch (error) {
     console.error("Database health check failed:", error);
 
-    return Response.json(
+    return jsonNoStore(
       {
         status: "unavailable",
         checks: {
@@ -37,7 +33,6 @@ export async function GET() {
       },
       {
         status: 503,
-        headers: responseHeaders,
       },
     );
   }
