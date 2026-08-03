@@ -109,6 +109,22 @@ test("rejects a future path verification date", () => {
   );
 });
 
+test("rejects a stale path verification date", () => {
+  const records = PROVISIONAL_SEGMENTS.map((record) =>
+    record.position === 1
+      ? {
+          ...record,
+          pathLastVerifiedAt: new Date("2025-09-01T00:00:00.000Z"),
+        }
+      : record,
+  );
+
+  assert.throws(
+    () => assemblePublishedJourneyPaths(records, CURRENT_TIME),
+    /older than 90 days/,
+  );
+});
+
 test("rejects invalid path coordinates", () => {
   const records = PROVISIONAL_SEGMENTS.map((record) =>
     record.position === 1

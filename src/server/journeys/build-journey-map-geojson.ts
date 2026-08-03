@@ -14,6 +14,7 @@ export type JourneyMapLocation = {
 };
 
 export type JourneyMarkerProperties = {
+  sequence: number;
   slug: string;
   name: string;
   roles: JourneyMarkerRole[];
@@ -162,7 +163,7 @@ export function buildJourneyMapGeoJson({
 
   return {
     type: "FeatureCollection",
-    features: [...markersBySlug.values()].map((marker) => ({
+    features: [...markersBySlug.values()].map((marker, index) => ({
       type: "Feature",
       id: marker.location.slug,
       geometry: {
@@ -170,6 +171,7 @@ export function buildJourneyMapGeoJson({
         coordinates: [marker.location.longitude, marker.location.latitude],
       },
       properties: {
+        sequence: index + 1,
         slug: marker.location.slug,
         name: marker.location.name,
         roles: markerRoleOrder.filter((role) => marker.roles.has(role)),

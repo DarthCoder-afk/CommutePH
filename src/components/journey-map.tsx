@@ -110,6 +110,7 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
       for (const feature of markers.features) {
         const coordinates = feature.geometry.coordinates;
         const rolesLabel = formatMarkerRoles(feature.properties.roles);
+        const markerLabel = `Stop ${feature.properties.sequence}: ${feature.properties.name}: ${rolesLabel}`;
 
         bounds.extend(coordinates);
 
@@ -118,12 +119,9 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
         const markerElement = document.createElement("button");
 
         markerElement.type = "button";
-        markerElement.title = `${feature.properties.name}: ${rolesLabel}`;
-
-        markerElement.setAttribute(
-          "aria-label",
-          `${feature.properties.name}: ${rolesLabel}`,
-        );
+        markerElement.title = markerLabel;
+        markerElement.setAttribute("aria-label", markerLabel);
+        markerElement.textContent = String(feature.properties.sequence);
 
         markerElement.style.width = "1.75rem";
         markerElement.style.height = "1.75rem";
@@ -133,17 +131,29 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
           feature.properties.roles,
         );
         markerElement.style.boxShadow = "0 2px 6px rgb(15 23 42 / 35%)";
+        markerElement.style.color = "white";
+        markerElement.style.fontSize = "0.75rem";
+        markerElement.style.fontWeight = "700";
+        markerElement.style.lineHeight = "1";
+        markerElement.style.textAlign = "center";
         markerElement.style.cursor = "pointer";
 
         const popupContent = document.createElement("div");
+        const popupSequence = document.createElement("p");
         const popupTitle = document.createElement("strong");
         const popupRoles = document.createElement("p");
+
+        popupSequence.textContent = `Stop ${feature.properties.sequence}`;
+        popupSequence.style.marginBottom = "0.25rem";
+        popupSequence.style.fontSize = "0.75rem";
+        popupSequence.style.fontWeight = "700";
+        popupSequence.style.color = "#475569";
 
         popupTitle.textContent = feature.properties.name;
         popupRoles.textContent = rolesLabel;
         popupRoles.style.marginTop = "0.25rem";
 
-        popupContent.append(popupTitle, popupRoles);
+        popupContent.append(popupSequence, popupTitle, popupRoles);
 
         const popup = new maplibregl.Popup({
           offset: 20,
@@ -330,7 +340,14 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
               key={feature.id}
               className="flex flex-wrap justify-between gap-2 text-sm"
             >
-              <span className="font-medium text-slate-900">
+              <span className="flex items-center gap-2 font-medium text-slate-900">
+                <span
+                  aria-hidden="true"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white"
+                >
+                  {feature.properties.sequence}
+                </span>
+
                 {feature.properties.name}
               </span>
 

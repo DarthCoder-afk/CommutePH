@@ -151,3 +151,21 @@ test("rejects a future provisional verification date", () => {
     /future verification date/,
   );
 });
+
+test("rejects a stale schedule verification date", () => {
+  assert.throws(
+    () =>
+      assemblePublishedRouteSchedules(
+        PROVISIONAL_ROUTE_ID,
+        [
+          {
+            ...PROVISIONAL_SCHEDULES[1]!,
+            position: 1,
+            lastVerifiedAt: new Date("2025-09-01T00:00:00.000Z"),
+          },
+        ],
+        CURRENT_TIME,
+      ),
+    /older than 90 days/,
+  );
+});

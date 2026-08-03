@@ -1,3 +1,8 @@
+import {
+  isPublicVerificationCurrent,
+  publicVerificationMaxAgeDays,
+} from "@/server/verification/verification-freshness";
+
 export type RawTransportRouteScheduleRecord = {
   id: string;
   transportRouteId: string;
@@ -94,6 +99,12 @@ export function assemblePublishedRouteSchedules(
     if (lastVerifiedAt > currentTime) {
       throw new Error(
         `Schedule ${schedule.position} has a future verification date.`,
+      );
+    }
+
+    if (!isPublicVerificationCurrent(lastVerifiedAt, currentTime)) {
+      throw new Error(
+        `Schedule ${schedule.position} verification is older than ${publicVerificationMaxAgeDays} days.`,
       );
     }
 

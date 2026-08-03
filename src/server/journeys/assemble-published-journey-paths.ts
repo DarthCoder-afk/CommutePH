@@ -1,3 +1,8 @@
+import {
+  isPublicVerificationCurrent,
+  publicVerificationMaxAgeDays,
+} from "@/server/verification/verification-freshness";
+
 export type RawJourneySegmentPathRecord = {
   id: string;
   position: number;
@@ -152,6 +157,12 @@ export function assemblePublishedJourneyPaths(
     if (pathLastVerifiedAt > currentTime) {
       throw new Error(
         `Segment ${record.position} path has a future verification date.`,
+      );
+    }
+
+    if (!isPublicVerificationCurrent(pathLastVerifiedAt, currentTime)) {
+      throw new Error(
+        `Segment ${record.position} path verification is older than ${publicVerificationMaxAgeDays} days.`,
       );
     }
 

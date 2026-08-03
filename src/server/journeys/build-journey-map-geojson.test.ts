@@ -162,6 +162,11 @@ test("builds ordered GeoJSON markers for a provisional direct journey", () => {
     [["origin"], ["pickup"], ["dropoff"], ["destination"]],
   );
 
+  assert.deepEqual(
+    result.features.map((feature) => feature.properties.sequence),
+    [1, 2, 3, 4],
+  );
+
   const pickupMarker = result.features.find(
     (feature) => feature.id === "provisional-pickup",
   );
@@ -200,6 +205,7 @@ test("deduplicates a provisional transfer location", () => {
 
   assert(transferMarker);
 
+  assert.equal(transferMarker.properties.sequence, 2);
   assert.deepEqual(transferMarker.properties.roles, ["transfer"]);
   assert.deepEqual(transferMarker.properties.segmentPositions, [1, 2]);
 });
