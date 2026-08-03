@@ -18,6 +18,10 @@ import {
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
 import { assemblePublishedJourneyPaths } from "@/server/journeys/assemble-published-journey-paths";
 import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
+import {
+  isPublicVerificationCurrent,
+  publicVerificationMaxAgeDays,
+} from "@/server/verification/verification-freshness";
 
 const journeySlug = process.argv.slice(2).find((argument) => argument !== "--");
 
@@ -77,6 +81,7 @@ async function main() {
         estimatedFareMinCentavos: journeys.estimatedFareMinCentavos,
         estimatedFareMaxCentavos: journeys.estimatedFareMaxCentavos,
         status: journeys.status,
+        lastVerifiedAt: journeys.lastVerifiedAt,
         isActive: journeys.isActive,
       })
       .from(journeys)
@@ -118,12 +123,29 @@ async function main() {
 
     const currentTime = new Date();
 
+    if (!isPublicVerificationCurrent(journey.lastVerifiedAt, currentTime)) {
+      addBlocker(
+        `The journey needs a verification date from within the last ${publicVerificationMaxAgeDays} days.`,
+      );
+    }
+
     for (const source of sourceRows) {
       if (source.checkedAt > currentTime) {
         addBlocker(
           `Verification source "${source.id}" has a future checked-at date.`,
         );
       }
+    }
+
+    if (
+      sourceRows.length > 0 &&
+      !sourceRows.some((source) =>
+        isPublicVerificationCurrent(source.checkedAt, currentTime),
+      )
+    ) {
+      addBlocker(
+        `The journey needs at least one verification source checked within the last ${publicVerificationMaxAgeDays} days.`,
+      );
     }
 
     const segmentRows = await db
@@ -150,6 +172,17 @@ async function main() {
       .from(journeySegments)
       .where(eq(journeySegments.journeyId, journey.id))
       .orderBy(asc(journeySegments.position));
+
+    for (const segment of segmentRows) {
+      if (
+        segment.pathGeoJson !== null &&
+        !isPublicVerificationCurrent(segment.pathLastVerifiedAt, currentTime)
+      ) {
+        addBlocker(
+          `Segment ${segment.position} path needs verification from within the last ${publicVerificationMaxAgeDays} days.`,
+        );
+      }
+    }
 
     if (segmentRows.length === 0) {
       addBlocker("The journey needs at least one segment.");
@@ -370,6 +403,17 @@ async function main() {
             })
             .from(transportRouteSchedules)
             .where(inArray(transportRouteSchedules.transportRouteId, routeIds));
+
+    for (const schedule of scheduleRows) {
+      if (
+        schedule.isActive &&
+        !isPublicVerificationCurrent(schedule.lastVerifiedAt, currentTime)
+      ) {
+        addBlocker(
+          `Active schedule ${schedule.position} needs verification from within the last ${publicVerificationMaxAgeDays} days.`,
+        );
+      }
+    }
 
     for (const route of routeRows) {
       try {
