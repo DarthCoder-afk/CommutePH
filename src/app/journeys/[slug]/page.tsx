@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { JourneySegmentCard } from "@/components/journey-segment-card";
 import { JourneySummaryCard } from "@/components/journey-summary-card";
 import { getPublishedJourneyDetail } from "@/server/journeys/get-published-journey-detail";
+import { JourneyMap } from "@/components/journey-map";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,24 @@ export default async function JourneyPage({ params }: JourneyPageProps) {
             showDetailsLink={false}
           />
         </div>
+
+        <section aria-labelledby="journey-map-heading" className="mt-8">
+          <h2
+            id="journey-map-heading"
+            className="text-2xl font-bold tracking-tight"
+          >
+            Journey map
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            The map shows verified journey locations. Route lines will be added
+            only when verified geometry is available.
+          </p>
+
+          <div className="mt-5">
+            <JourneyMap markers={journey.map.markers} />
+          </div>
+        </section>
 
         <section aria-labelledby="directions-heading" className="mt-8">
           <h2

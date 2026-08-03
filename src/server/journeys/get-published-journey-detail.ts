@@ -74,6 +74,7 @@ export async function getPublishedJourneyDetail(slug: string) {
       position: journeySegments.position,
       kind: journeySegments.kind,
       summary: journeySegments.summary,
+      publicNotes: journeySegments.publicNotes,
       walkingFromLocationId: journeySegments.walkingFromLocationId,
       walkingToLocationId: journeySegments.walkingToLocationId,
       boardingRouteStopId: journeySegments.boardingRouteStopId,

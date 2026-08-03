@@ -33,6 +33,7 @@ export type RawJourneySegmentRecord = {
   position: number;
   kind: "walking" | "transit";
   summary: string;
+  publicNotes: string | null;
   walkingFromLocationId: string | null;
   walkingToLocationId: string | null;
   boardingRouteStopId: string | null;
@@ -73,6 +74,7 @@ type AssembledSegmentBase = {
   id: string;
   position: number;
   summary: string;
+  publicNotes: string | null;
   estimatedDuration: {
     minMinutes: number;
     maxMinutes: number;
@@ -198,6 +200,20 @@ function toLocation(location: SegmentLocationRecord): AssembledLocation {
   };
 }
 
+function normalizePublicNotes(value: string | null, segmentPosition: number) {
+  if (value === null) {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    throw new Error(`Segment ${segmentPosition} public notes cannot be blank.`);
+  }
+
+  return normalizedValue;
+}
+
 export function assembleJourneySegments({
   segments,
   steps,
@@ -279,6 +295,7 @@ export function assembleJourneySegments({
       id: segment.id,
       position: segment.position,
       summary: segment.summary,
+      publicNotes: normalizePublicNotes(segment.publicNotes, segment.position),
       estimatedDuration: durationRange
         ? {
             minMinutes: durationRange.minimum,

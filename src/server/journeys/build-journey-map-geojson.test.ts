@@ -69,6 +69,7 @@ function createWalkingSegment(
     position,
     kind: "walking",
     summary: "Provisional walking segment.",
+    publicNotes: null,
     from,
     to,
     estimatedDuration: null,
@@ -94,6 +95,7 @@ function createTransitSegment(
     position,
     kind: "transit",
     summary: "Provisional transit segment.",
+    publicNotes: null,
     route: {
       id: `${id}-route`,
       slug: `${id}-provisional-route`,

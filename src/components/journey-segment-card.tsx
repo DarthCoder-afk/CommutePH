@@ -181,6 +181,17 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
         </dl>
       ) : null}
 
+      {segment.publicNotes ? (
+        <aside
+          aria-label={`Important note for segment ${segment.position}`}
+          className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
+        >
+          <p className="text-sm font-bold">Important note</p>
+
+          <p className="mt-1 text-sm leading-6">{segment.publicNotes}</p>
+        </aside>
+      ) : null}
+
       <ol
         aria-label={`Instructions for segment ${segment.position}`}
         className="mt-5 space-y-4 border-t border-slate-200 pt-5"

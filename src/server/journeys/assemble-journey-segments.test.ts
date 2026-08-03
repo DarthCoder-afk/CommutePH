@@ -89,6 +89,7 @@ const PROVISIONAL_SEGMENTS: RawJourneySegmentRecord[] = [
     position: 3,
     kind: "walking",
     summary: "Provisional final walking segment.",
+    publicNotes: null,
     walkingFromLocationId: "location-stop",
     walkingToLocationId: "location-destination",
     boardingRouteStopId: null,
@@ -103,6 +104,7 @@ const PROVISIONAL_SEGMENTS: RawJourneySegmentRecord[] = [
     position: 1,
     kind: "walking",
     summary: "Provisional initial walking segment.",
+    publicNotes: null,
     walkingFromLocationId: "location-origin",
     walkingToLocationId: "location-terminal",
     boardingRouteStopId: null,
@@ -117,6 +119,7 @@ const PROVISIONAL_SEGMENTS: RawJourneySegmentRecord[] = [
     position: 2,
     kind: "transit",
     summary: "Provisional transit segment.",
+    publicNotes: "Provisional public warning.",
     walkingFromLocationId: null,
     walkingToLocationId: null,
     boardingRouteStopId: "stop-boarding",
@@ -207,6 +210,8 @@ test("assembles ordered provisional walking and transit segments", () => {
       "Provisional Stop",
     );
   }
+
+  assert.equal(transitSegment.publicNotes, "Provisional public warning.");
 });
 
 test("rejects a missing walking location", () => {
@@ -286,5 +291,28 @@ test("rejects invalid provisional location coordinates", () => {
         routeStops: PROVISIONAL_ROUTE_STOPS,
       }),
     /invalid coordinates/,
+  );
+});
+
+test("rejects blank provisional public notes", () => {
+  const invalidSegments = PROVISIONAL_SEGMENTS.map((segment) =>
+    segment.id === "segment-two"
+      ? {
+          ...segment,
+          publicNotes: "   ",
+        }
+      : segment,
+  );
+
+  assert.throws(
+    () =>
+      assembleJourneySegments({
+        segments: invalidSegments,
+        steps: PROVISIONAL_STEPS,
+        locations: PROVISIONAL_LOCATIONS,
+        routes: PROVISIONAL_ROUTES,
+        routeStops: PROVISIONAL_ROUTE_STOPS,
+      }),
+    /public notes cannot be blank/,
   );
 });

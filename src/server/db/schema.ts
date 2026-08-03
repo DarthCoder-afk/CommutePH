@@ -462,6 +462,8 @@ export const journeySegments = pgTable(
 
     notes: text("notes"),
 
+    publicNotes: text("public_notes"),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "date",
@@ -491,6 +493,14 @@ export const journeySegments = pgTable(
     ),
 
     check("journey_segments_position_positive", sql`${table.position} >= 1`),
+
+    check(
+      "journey_segments_public_notes_not_blank",
+      sql`
+        ${table.publicNotes} IS NULL
+        OR length(btrim(${table.publicNotes})) > 0
+      `,
+    ),
 
     check(
       "journey_segments_duration_range_valid",
