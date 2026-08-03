@@ -228,11 +228,32 @@ async function main() {
     },
   );
 
-  assert.equal(
-    draftPageResponse.status,
-    404,
-    "The unpublished journey page must return 404.",
+  const draftPageBody = await draftPageResponse.text();
+
+  assert(
+    draftPageResponse.status === 404 || draftPageResponse.status === 200,
+    `The unpublished journey page returned unexpected status ${draftPageResponse.status}.`,
   );
+
+  assert.match(
+    draftPageBody,
+    /Journey unavailable/,
+    "The unpublished journey page did not render the unavailable state.",
+  );
+
+  assert.doesNotMatch(
+    draftPageBody,
+    /One Ayala to BGC High Street via BGC Bus/,
+    "The unpublished journey title leaked through the public page.",
+  );
+
+  if (draftPageResponse.status === 200) {
+    assert.match(
+      draftPageBody,
+      /<meta name="robots" content="noindex"\s*\/?>/,
+      "A streamed unpublished journey response must include a noindex directive.",
+    );
+  }
 
   console.log("Public release smoke checks passed.");
   console.log("Inactive provisional locations and journeys remain private.");

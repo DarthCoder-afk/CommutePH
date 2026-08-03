@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import {
   calculateJourneyEstimates,
@@ -8,6 +8,7 @@ import {
 } from "@/server/journeys/calculate-journey-estimates";
 import { db } from "@/server/db";
 import { journeySegments, journeys, locations } from "@/server/db/schema";
+import { getPublicVerificationCutoff } from "@/server/verification/verification-freshness";
 
 export async function searchPublishedDirectJourneys(
   originSlug: string,
@@ -38,6 +39,9 @@ export async function searchPublishedDirectJourneys(
     return [];
   }
 
+  const currentTime = new Date();
+  const verificationCutoff = getPublicVerificationCutoff(currentTime);
+
   const candidateJourneys = await db
     .select({
       id: journeys.id,
@@ -58,6 +62,8 @@ export async function searchPublishedDirectJourneys(
         eq(journeys.destinationLocationId, destination.id),
         eq(journeys.status, "verified"),
         eq(journeys.isActive, true),
+        gte(journeys.lastVerifiedAt, verificationCutoff),
+        lte(journeys.lastVerifiedAt, currentTime),
       ),
     )
     .orderBy(asc(journeys.estimatedDurationMin), asc(journeys.title))

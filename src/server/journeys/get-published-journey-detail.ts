@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { db } from "@/server/db";
 import {
@@ -17,12 +17,18 @@ import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-e
 import { buildJourneyMapGeoJson } from "@/server/journeys/build-journey-map-geojson";
 import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
 import { assemblePublishedJourneyPaths } from "@/server/journeys/assemble-published-journey-paths";
+import { getPublicVerificationCutoff } from "@/server/verification/verification-freshness";
 
 function withoutNulls(values: Array<string | null>): string[] {
   return values.filter((value): value is string => value !== null);
 }
 
 export async function getPublishedJourneyDetail(slug: string) {
+  const publicDataAssemblyTime = new Date();
+  const verificationCutoff = getPublicVerificationCutoff(
+    publicDataAssemblyTime,
+  );
+
   const [journey] = await db
     .select({
       id: journeys.id,
@@ -43,6 +49,8 @@ export async function getPublishedJourneyDetail(slug: string) {
         eq(journeys.slug, slug),
         eq(journeys.status, "verified"),
         eq(journeys.isActive, true),
+        gte(journeys.lastVerifiedAt, verificationCutoff),
+        lte(journeys.lastVerifiedAt, publicDataAssemblyTime),
       ),
     )
     .limit(1);
@@ -214,8 +222,6 @@ export async function getPublishedJourneyDetail(slug: string) {
             ),
           )
           .orderBy(asc(transportRouteSchedules.position));
-
-  const publicDataAssemblyTime = new Date();
 
   const routesWithSchedules = routeRows.map((route) => ({
     ...route,
