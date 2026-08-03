@@ -11,10 +11,12 @@ import {
   journeys,
   locations,
   transportRoutes,
+  transportRouteSchedules,
   transportRouteStops,
 } from "@/server/db/schema";
 
 import { calculateJourneyEstimates } from "@/server/journeys/calculate-journey-estimates";
+import { assemblePublishedRouteSchedules } from "@/server/routes/assemble-published-route-schedules";
 
 const journeySlug = process.argv.slice(2).find((argument) => argument !== "--");
 
@@ -332,6 +334,36 @@ async function main() {
             .where(inArray(transportRoutes.id, routeIds));
 
     const routesById = new Map(routeRows.map((route) => [route.id, route]));
+
+    const scheduleRows =
+      routeIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: transportRouteSchedules.id,
+              transportRouteId: transportRouteSchedules.transportRouteId,
+              position: transportRouteSchedules.position,
+              serviceDays: transportRouteSchedules.serviceDays,
+              operatingHours: transportRouteSchedules.operatingHours,
+              publicNotes: transportRouteSchedules.publicNotes,
+              lastVerifiedAt: transportRouteSchedules.lastVerifiedAt,
+              isActive: transportRouteSchedules.isActive,
+            })
+            .from(transportRouteSchedules)
+            .where(inArray(transportRouteSchedules.transportRouteId, routeIds));
+
+    for (const route of routeRows) {
+      try {
+        assemblePublishedRouteSchedules(route.id, scheduleRows, currentTime);
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Unknown schedule error.";
+
+        addBlocker(
+          `Transport route "${route.name}" schedule validation failed: ${reason}`,
+        );
+      }
+    }
 
     const relatedLocationIds = [
       ...new Set([
