@@ -1,3 +1,5 @@
+import { Clock3, Coins, MapPin, Navigation } from "lucide-react";
+
 import type { AssembledJourneySegment } from "@/server/journeys/assemble-journey-segments";
 
 type JourneySegmentCardProps = {
@@ -45,7 +47,7 @@ function formatVerificationDate(value: string) {
 
 export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="h-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
           Segment {segment.position}
@@ -65,7 +67,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
       {segment.kind === "walking" ? (
         <dl className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl bg-slate-50 p-3">
-            <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <dt className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              <MapPin aria-hidden="true" className="size-4" />
               From
             </dt>
             <dd className="mt-1 font-semibold text-slate-950">
@@ -74,7 +77,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
           </div>
 
           <div className="rounded-xl bg-slate-50 p-3">
-            <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <dt className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              <Navigation aria-hidden="true" className="size-4" />
               To
             </dt>
             <dd className="mt-1 font-semibold text-slate-950">
@@ -149,7 +153,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
 
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-200 p-4">
-              <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                <MapPin aria-hidden="true" className="size-4" />
                 Board at
               </dt>
 
@@ -174,7 +179,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4">
-              <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              <dt className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                <Navigation aria-hidden="true" className="size-4" />
                 Get off at
               </dt>
 
@@ -204,7 +210,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
       {segment.estimatedDuration || segment.estimatedFare ? (
         <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
           {segment.estimatedDuration ? (
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <Clock3 aria-hidden="true" className="size-4 text-slate-500" />
               <dt className="font-semibold text-slate-600">Duration:</dt>
               <dd className="text-slate-800">
                 {formatDuration(
@@ -216,7 +223,8 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
           ) : null}
 
           {segment.estimatedFare ? (
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              <Coins aria-hidden="true" className="size-4 text-slate-500" />
               <dt className="font-semibold text-slate-600">Fare:</dt>
               <dd className="text-slate-800">
                 {formatFare(
