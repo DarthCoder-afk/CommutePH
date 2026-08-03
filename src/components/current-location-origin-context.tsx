@@ -19,6 +19,11 @@ import {
   type GeolocationStatus,
 } from "@/lib/geolocation/geolocation-status";
 import type { OriginSelection } from "@/lib/geolocation/origin-selection";
+import type { JourneySummary } from "@/lib/journeys/journey-summary";
+import {
+  searchPickupJourneys,
+  type PickupJourneyMatch,
+} from "@/lib/journeys/search-pickup-journeys";
 
 type CurrentLocationOriginUpdate = {
   origin: Extract<OriginSelection, { type: "CURRENT_LOCATION" }>;
@@ -42,8 +47,19 @@ type LocationSearchResponse = {
   data: LocationOption[];
 };
 
+type JourneySearchResponse = {
+  data: JourneySummary[];
+};
+
 export type PickupSearchStatus =
   "idle" | "loading" | "ready" | "empty" | "error";
+
+export type PickupJourneySearchStatus =
+  "idle" | "loading" | "ready" | "empty" | "error";
+
+type NearbyPickupCandidate = ReturnType<
+  typeof findNearbyLocations<LocationOption>
+>[number];
 
 type CurrentLocationOriginContextValue = {
   currentLocationOrigin: CurrentLocationOriginUpdate | null;
@@ -62,6 +78,12 @@ type CurrentLocationOriginContextValue = {
   selectPickupCandidate: (locationId: string) => void;
   pickupSearchStatus: PickupSearchStatus;
   pickupSearchRadiusMeters: number;
+  setPickupDestination: (destination: LocationOption | null) => void;
+  pickupJourneyMatches: PickupJourneyMatch<
+    NearbyPickupCandidate,
+    JourneySummary
+  >[];
+  pickupJourneySearchStatus: PickupJourneySearchStatus;
 };
 
 const CurrentLocationOriginContext =
@@ -87,6 +109,13 @@ export function CurrentLocationOriginProvider({
   const [selectedPickupLocationId, setSelectedPickupLocationId] = useState<
     string | null
   >(null);
+  const [pickupDestination, setPickupDestinationState] =
+    useState<LocationOption | null>(null);
+  const [pickupJourneyMatches, setPickupJourneyMatches] = useState<
+    PickupJourneyMatch<NearbyPickupCandidate, JourneySummary>[]
+  >([]);
+  const [pickupJourneySearchStatus, setPickupJourneySearchStatus] =
+    useState<PickupJourneySearchStatus>("idle");
 
   const requestDeviceLocation = useCallback((selectAsOrigin: boolean) => {
     if (!("geolocation" in navigator)) {
@@ -187,19 +216,47 @@ export function CurrentLocationOriginProvider({
           ? "ready"
           : "empty";
 
+  const pickupCandidatesForSelection = useMemo(() => {
+    if (!pickupDestination) {
+      return nearbyPickupCandidates;
+    }
+
+    if (pickupJourneySearchStatus === "loading") {
+      return nearbyPickupCandidates;
+    }
+
+    if (pickupJourneySearchStatus === "ready") {
+      return pickupJourneyMatches.map((match) => match.candidate);
+    }
+
+    return [];
+  }, [
+    nearbyPickupCandidates,
+    pickupDestination,
+    pickupJourneyMatches,
+    pickupJourneySearchStatus,
+  ]);
+
   const selectedPickupCandidate = useMemo(
     () =>
-      nearbyPickupCandidates.find(
+      pickupCandidatesForSelection.find(
         (candidate) => candidate.location.id === selectedPickupLocationId,
       ) ??
-      nearbyPickupCandidates[0] ??
+      pickupCandidatesForSelection[0] ??
       null,
-    [nearbyPickupCandidates, selectedPickupLocationId],
+    [pickupCandidatesForSelection, selectedPickupLocationId],
   );
 
   const selectPickupCandidate = useCallback((locationId: string) => {
     setSelectedPickupLocationId(locationId);
   }, []);
+
+  const setPickupDestination = useCallback(
+    (destination: LocationOption | null) => {
+      setPickupDestinationState(destination);
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -243,6 +300,75 @@ export function CurrentLocationOriginProvider({
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    const findConnectedPickups = async () => {
+      if (!pickupDestination || pickupSearchStatus !== "ready") {
+        setPickupJourneyMatches([]);
+        setPickupJourneySearchStatus("idle");
+        return;
+      }
+
+      setPickupJourneyMatches([]);
+      setPickupJourneySearchStatus("loading");
+
+      try {
+        const matches = await searchPickupJourneys({
+          candidates: nearbyPickupCandidates,
+          destinationSlug: pickupDestination.slug,
+          searchJourneys: async (originSlug, destinationSlug) => {
+            const searchParams = new URLSearchParams({
+              origin: originSlug,
+              destination: destinationSlug,
+            });
+            const response = await fetch(
+              "/api/journeys?" + searchParams.toString(),
+              {
+                signal: controller.signal,
+              },
+            );
+
+            if (!response.ok) {
+              throw new Error(
+                "Pickup journey search failed with status " +
+                  response.status +
+                  ".",
+              );
+            }
+
+            const payload = (await response.json()) as JourneySearchResponse;
+
+            if (!Array.isArray(payload.data)) {
+              throw new Error(
+                "The pickup journey search returned an invalid response.",
+              );
+            }
+
+            return payload.data;
+          },
+        });
+
+        setPickupJourneyMatches(matches);
+        setPickupJourneySearchStatus(matches.length > 0 ? "ready" : "empty");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to search journeys from nearby pickups:", error);
+        setPickupJourneyMatches([]);
+        setPickupJourneySearchStatus("error");
+      }
+    };
+
+    void findConnectedPickups();
+
+    return () => {
+      controller.abort();
+    };
+  }, [nearbyPickupCandidates, pickupDestination, pickupSearchStatus]);
+
+  useEffect(() => {
     return () => {
       geolocationRequestRef.current += 1;
     };
@@ -263,6 +389,9 @@ export function CurrentLocationOriginProvider({
       selectPickupCandidate,
       pickupSearchStatus,
       pickupSearchRadiusMeters,
+      setPickupDestination,
+      pickupJourneyMatches,
+      pickupJourneySearchStatus,
     }),
     [
       currentLocationOrigin,
@@ -276,6 +405,9 @@ export function CurrentLocationOriginProvider({
       selectedPickupCandidate,
       selectPickupCandidate,
       pickupSearchStatus,
+      setPickupDestination,
+      pickupJourneyMatches,
+      pickupJourneySearchStatus,
     ],
   );
 

@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -10,10 +11,8 @@ import {
 import { ArrowUpDown, SearchX } from "lucide-react";
 
 import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
-import {
-  JourneySummaryCard,
-  type JourneySummary,
-} from "@/components/journey-summary-card";
+import { CurrentLocationJourneyOptionCard } from "@/components/current-location-journey-option-card";
+import { JourneySummaryCard } from "@/components/journey-summary-card";
 import {
   LocationSearchInput,
   type LocationOption,
@@ -24,6 +23,11 @@ import {
 } from "@/lib/geolocation/geolocation-status";
 import { formatApproximateDistance } from "@/lib/geolocation/format-distance";
 import type { OriginSelection } from "@/lib/geolocation/origin-selection";
+import {
+  buildCurrentLocationJourneyOptions,
+  type CurrentLocationJourneyOption,
+} from "@/lib/journeys/build-current-location-journey-options";
+import type { JourneySummary } from "@/lib/journeys/journey-summary";
 
 type JourneySearchSuccess = {
   data: JourneySummary[];
@@ -106,21 +110,52 @@ export function CommuteSearchForm() {
     currentLocationOrigin,
     geolocationStatus,
     nearbyPickupCandidates,
+    pickupJourneyMatches,
+    pickupJourneySearchStatus,
     pickupSearchRadiusMeters,
     pickupSearchStatus,
     requestCurrentLocation,
     selectedPickupCandidate,
     selectPickupCandidate,
+    setPickupDestination,
   } = useCurrentLocationOrigin();
   const [origin, setOrigin] = useState<OriginSelection | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
   const [originQuery, setOriginQuery] = useState("");
   const [destinationQuery, setDestinationQuery] = useState("");
   const [journeys, setJourneys] = useState<JourneySummary[]>([]);
+  const [currentLocationJourneyOptions, setCurrentLocationJourneyOptions] =
+    useState<CurrentLocationJourneyOption[]>([]);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
   const activeRequest = useRef<AbortController | null>(null);
+  const pickupJourneyMatchesByLocationId = useMemo(
+    () =>
+      new Map(
+        pickupJourneyMatches.map((match) => [
+          match.candidate.location.id,
+          match,
+        ]),
+      ),
+    [pickupJourneyMatches],
+  );
+  const displayedPickupCandidates = useMemo(() => {
+    if (!destination || pickupJourneySearchStatus === "loading") {
+      return nearbyPickupCandidates;
+    }
+
+    if (pickupJourneySearchStatus === "ready") {
+      return pickupJourneyMatches.map((match) => match.candidate);
+    }
+
+    return [];
+  }, [
+    destination,
+    nearbyPickupCandidates,
+    pickupJourneyMatches,
+    pickupJourneySearchStatus,
+  ]);
 
   const searchJourneys = useCallback(
     async (
@@ -133,6 +168,7 @@ export function CommuteSearchForm() {
       activeRequest.current = controller;
 
       setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
       setStatus("loading");
       setMessage(null);
 
@@ -174,6 +210,7 @@ export function CommuteSearchForm() {
         );
 
         setJourneys(payload.data);
+        setCurrentLocationJourneyOptions([]);
         setStatus("success");
 
         setMessage(
@@ -191,6 +228,7 @@ export function CommuteSearchForm() {
         console.error("Failed to search journeys:", error);
 
         setJourneys([]);
+        setCurrentLocationJourneyOptions([]);
         setStatus("error");
         setMessage(
           error instanceof Error
@@ -219,6 +257,7 @@ export function CommuteSearchForm() {
         location: persistedSearch.origin,
       });
       setDestination(persistedSearch.destination);
+      setPickupDestination(persistedSearch.destination);
       setOriginQuery(persistedSearch.origin.name);
       setDestinationQuery(persistedSearch.destination.name);
 
@@ -229,7 +268,7 @@ export function CommuteSearchForm() {
       window.clearTimeout(restoreTimeout);
       activeRequest.current?.abort();
     };
-  }, [searchJourneys]);
+  }, [searchJourneys, setPickupDestination]);
 
   useEffect(() => {
     if (!currentLocationOrigin) {
@@ -244,6 +283,7 @@ export function CommuteSearchForm() {
       setOrigin(currentLocationOrigin.origin);
       setOriginQuery("Current location");
       setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
       setStatus("idle");
       setMessage(null);
     }, 0);
@@ -260,6 +300,7 @@ export function CommuteSearchForm() {
     window.sessionStorage.removeItem(persistedSearchKey);
 
     setJourneys([]);
+    setCurrentLocationJourneyOptions([]);
     setStatus("idle");
     setMessage(null);
   }
@@ -279,6 +320,7 @@ export function CommuteSearchForm() {
 
   function handleDestinationChange(location: LocationOption | null) {
     setDestination(location);
+    setPickupDestination(location);
     resetResults();
   }
 
@@ -301,6 +343,7 @@ export function CommuteSearchForm() {
         : null,
     );
     setDestination(previousOrigin);
+    setPickupDestination(previousOrigin);
     setOriginQuery(previousDestinationQuery);
     setDestinationQuery(previousOriginQuery);
 
@@ -319,6 +362,7 @@ export function CommuteSearchForm() {
 
     if (origin.type === "CURRENT_LOCATION") {
       setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
       setStatus("notice");
 
       if (pickupSearchStatus === "loading") {
@@ -331,11 +375,45 @@ export function CommuteSearchForm() {
         setMessage(
           "No supported commute pickup point was found near your current location.",
         );
-      } else {
+      } else if (pickupJourneySearchStatus === "loading") {
         setMessage(
-          `${nearbyPickupCandidates.length} nearby pickup ${
-            nearbyPickupCandidates.length === 1 ? "point is" : "points are"
-          } available. Journey matching will be added in the next checkpoint.`,
+          "Checking which nearby pickup points connect to your destination.",
+        );
+      } else if (pickupJourneySearchStatus === "error") {
+        setStatus("error");
+        setMessage(
+          "Journey availability from nearby pickup points could not be checked. Please try again.",
+        );
+      } else if (pickupJourneySearchStatus === "empty") {
+        setMessage(
+          "No verified journey connects a nearby pickup point to this destination yet.",
+        );
+      } else {
+        let completeOptions: CurrentLocationJourneyOption[];
+
+        try {
+          completeOptions =
+            buildCurrentLocationJourneyOptions(pickupJourneyMatches);
+        } catch (error) {
+          console.error("Failed to assemble current-location journeys:", error);
+          setStatus("error");
+          setMessage("Complete commute options could not be assembled.");
+          return;
+        }
+
+        if (completeOptions.length === 0) {
+          setMessage(
+            "No complete commute option is available for this destination yet.",
+          );
+          return;
+        }
+
+        setCurrentLocationJourneyOptions(completeOptions);
+        setStatus("success");
+        setMessage(
+          `${completeOptions.length} complete commute ${
+            completeOptions.length === 1 ? "option" : "options"
+          } found and ranked.`,
         );
       }
 
@@ -414,23 +492,61 @@ export function CommuteSearchForm() {
           </p>
         ) : null}
 
+        {origin?.type === "CURRENT_LOCATION" && destination ? (
+          <p
+            role={pickupJourneySearchStatus === "error" ? "alert" : "status"}
+            aria-live="polite"
+            className={`text-sm leading-6 ${
+              pickupJourneySearchStatus === "error"
+                ? "text-red-700"
+                : pickupJourneySearchStatus === "empty"
+                  ? "text-amber-800"
+                  : "text-blue-700"
+            }`}
+          >
+            {pickupJourneySearchStatus === "loading"
+              ? "Checking verified journeys from nearby pickup points…"
+              : pickupJourneySearchStatus === "error"
+                ? "Journey availability could not be checked. Please try again."
+                : pickupJourneySearchStatus === "empty"
+                  ? "No verified journey connects a nearby pickup point to this destination yet."
+                  : pickupJourneySearchStatus === "ready"
+                    ? `${pickupJourneyMatches.length} journey-connected ${
+                        pickupJourneyMatches.length === 1
+                          ? "pickup point"
+                          : "pickup points"
+                      } available.`
+                    : null}
+          </p>
+        ) : null}
+
         {origin?.type === "CURRENT_LOCATION" &&
-        pickupSearchStatus === "ready" ? (
+        pickupSearchStatus === "ready" &&
+        displayedPickupCandidates.length > 0 ? (
           <fieldset className="space-y-3">
             <legend className="text-sm font-semibold text-slate-800">
-              Suggested pickup points
+              {destination && pickupJourneySearchStatus === "ready"
+                ? "Journey-connected pickup points"
+                : "Suggested pickup points"}
             </legend>
 
             <p className="text-xs leading-5 text-slate-500">
-              Ordered by straight-line proximity. Actual walking distance may be
-              longer.
+              {destination && pickupJourneySearchStatus === "loading"
+                ? "Checking each nearby point against published journey guidance."
+                : "Ordered by straight-line proximity. Actual walking distance may be longer."}
             </p>
 
             <div className="space-y-2">
-              {nearbyPickupCandidates.map((candidate, index) => {
+              {displayedPickupCandidates.map((candidate, index) => {
                 const isSelected =
                   selectedPickupCandidate?.location.id ===
                   candidate.location.id;
+                const journeyMatch = pickupJourneyMatchesByLocationId.get(
+                  candidate.location.id,
+                );
+                const isCheckingJourney =
+                  Boolean(destination) &&
+                  pickupJourneySearchStatus === "loading";
 
                 return (
                   <label
@@ -447,10 +563,11 @@ export function CommuteSearchForm() {
                         name="pickup-location"
                         value={candidate.location.slug}
                         checked={isSelected}
+                        disabled={isCheckingJourney}
                         onChange={() => {
                           selectPickupCandidate(candidate.location.id);
                         }}
-                        className="mt-1 size-4 accent-emerald-700"
+                        className="mt-1 size-4 accent-emerald-700 disabled:cursor-wait"
                       />
 
                       <span className="min-w-0 flex-1">
@@ -468,6 +585,15 @@ export function CommuteSearchForm() {
                           {isSelected ? (
                             <span className="rounded-full bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-white">
                               Selected
+                            </span>
+                          ) : null}
+
+                          {journeyMatch ? (
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900">
+                              {journeyMatch.journeys.length} verified{" "}
+                              {journeyMatch.journeys.length === 1
+                                ? "journey"
+                                : "journeys"}
                             </span>
                           ) : null}
                         </span>
@@ -545,7 +671,9 @@ export function CommuteSearchForm() {
         </div>
       ) : null}
 
-      {status === "success" && journeys.length === 0 ? (
+      {status === "success" &&
+      journeys.length === 0 &&
+      currentLocationJourneyOptions.length === 0 ? (
         <section
           role="status"
           aria-live="polite"
@@ -564,6 +692,21 @@ export function CommuteSearchForm() {
             another pair of active locations.
           </p>
         </section>
+      ) : null}
+
+      {status === "success" && currentLocationJourneyOptions.length > 0 ? (
+        <ol aria-label="Ranked complete commute options" className="space-y-4">
+          {currentLocationJourneyOptions.map((option) => (
+            <li key={option.id}>
+              <CurrentLocationJourneyOptionCard
+                option={option}
+                isSelectedPickup={
+                  selectedPickupCandidate?.location.id === option.pickup.id
+                }
+              />
+            </li>
+          ))}
+        </ol>
       ) : null}
 
       {status === "success" && journeys.length > 0 ? (

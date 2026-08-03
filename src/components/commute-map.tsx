@@ -34,6 +34,7 @@ function createLocationPopupContent(properties: Record<string, unknown>) {
   const name = document.createElement("strong");
   const place = document.createElement("span");
   const pickupDetails = document.createElement("span");
+  const journeyDetails = document.createElement("span");
 
   name.className = "block text-sm text-slate-950";
   name.textContent =
@@ -58,6 +59,19 @@ function createLocationPopupContent(properties: Record<string, unknown>) {
         : "Nearby pickup · ") +
       formatApproximateDistance(properties.pickupDistanceMeters);
     content.append(pickupDetails);
+  }
+
+  if (typeof properties.verifiedJourneyCount === "number") {
+    journeyDetails.className = "mt-1 block text-xs font-semibold text-blue-800";
+    journeyDetails.textContent = `${properties.verifiedJourneyCount} verified ${
+      properties.verifiedJourneyCount === 1 ? "journey" : "journeys"
+    } to the destination`;
+    content.append(journeyDetails);
+  } else if (properties.journeyUnavailable === true) {
+    journeyDetails.className =
+      "mt-1 block text-xs font-semibold text-slate-600";
+    journeyDetails.textContent = "No verified journey to the destination";
+    content.append(journeyDetails);
   }
 
   return content;
@@ -111,6 +125,8 @@ export function CommuteMap() {
     geolocationStatus,
     locateOnMap,
     nearbyPickupCandidates,
+    pickupJourneyMatches,
+    pickupJourneySearchStatus,
     selectedPickupCandidate,
     selectPickupCandidate,
     supportedLocationsStatus,
@@ -133,6 +149,16 @@ export function CommuteMap() {
         ]),
       ),
     [nearbyPickupCandidates],
+  );
+  const pickupJourneyMatchByLocationId = useMemo(
+    () =>
+      new Map(
+        pickupJourneyMatches.map((match) => [
+          match.candidate.location.id,
+          match,
+        ]),
+      ),
+    [pickupJourneyMatches],
   );
   const locationCount = renderableLocations.length;
   const locationStatus: LocationStatus =
@@ -289,6 +315,13 @@ export function CommuteMap() {
       ];
       const markerElement = document.createElement("button");
       const pickupCandidate = nearbyPickupByLocationId.get(location.id);
+      const pickupJourneyMatch = pickupJourneyMatchByLocationId.get(
+        location.id,
+      );
+      const journeyUnavailable =
+        Boolean(pickupCandidate) &&
+        (pickupJourneySearchStatus === "empty" ||
+          (pickupJourneySearchStatus === "ready" && !pickupJourneyMatch));
       const isSelectedPickup =
         selectedPickupCandidate?.location.id === location.id;
 
@@ -303,17 +336,21 @@ export function CommuteMap() {
           "aria-label",
           (isSelectedPickup
             ? "Selected pickup point: "
-            : "Nearby pickup point: ") + location.name,
+            : journeyUnavailable
+              ? "Pickup point without a verified journey: "
+              : "Nearby pickup point: ") + location.name,
         );
       }
 
       markerElement.className = isSelectedPickup
         ? "size-9 cursor-pointer rounded-full border-[3px] border-white bg-emerald-700 shadow-lg ring-4 ring-emerald-400/40 transition-colors hover:bg-emerald-900 focus:ring-4 focus:ring-emerald-300 focus:outline-none"
-        : pickupCandidate
-          ? "size-8 cursor-pointer rounded-full border-[3px] border-white bg-amber-500 shadow-lg ring-4 ring-amber-400/35 transition-colors hover:bg-amber-700 focus:ring-4 focus:ring-amber-300 focus:outline-none"
-          : "size-7 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
+        : pickupCandidate && journeyUnavailable
+          ? "size-8 cursor-default rounded-full border-[3px] border-white bg-slate-400 shadow-lg ring-4 ring-slate-300/40 focus:ring-4 focus:ring-slate-300 focus:outline-none"
+          : pickupCandidate
+            ? "size-8 cursor-pointer rounded-full border-[3px] border-white bg-amber-500 shadow-lg ring-4 ring-amber-400/35 transition-colors hover:bg-amber-700 focus:ring-4 focus:ring-amber-300 focus:outline-none"
+            : "size-7 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
 
-      if (pickupCandidate) {
+      if (pickupCandidate && !journeyUnavailable) {
         markerElement.addEventListener("click", () => {
           selectPickupCandidate(location.id);
         });
@@ -330,6 +367,8 @@ export function CommuteMap() {
           city: location.city,
           pickupDistanceMeters: pickupCandidate?.distanceMeters,
           isSelectedPickup,
+          verifiedJourneyCount: pickupJourneyMatch?.journeys.length,
+          journeyUnavailable,
         }),
       );
 
@@ -363,6 +402,8 @@ export function CommuteMap() {
   }, [
     currentPosition,
     nearbyPickupByLocationId,
+    pickupJourneyMatchByLocationId,
+    pickupJourneySearchStatus,
     renderableLocations,
     selectedPickupCandidate,
     selectPickupCandidate,
@@ -510,6 +551,16 @@ export function CommuteMap() {
               />
               Selected pickup
             </span>
+            {pickupJourneySearchStatus === "empty" ||
+            pickupJourneySearchStatus === "ready" ? (
+              <span className="mt-1 flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="size-3 rounded-full bg-slate-400"
+                />
+                No verified journey
+              </span>
+            ) : null}
           </div>
         ) : null}
 
