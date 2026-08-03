@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 
+import { publicMapStyleUrl } from "@/config/map-style-url";
 import type { JourneyPathFeatureCollection } from "@/server/journeys/assemble-published-journey-paths";
 
 import type {
@@ -17,38 +18,67 @@ type JourneyMapProps = {
 
 type MapStatus = "loading" | "ready" | "error";
 
-const developmentStyleUrl = "https://demotiles.maplibre.org/style.json";
+const markerRolePresentation = {
+  origin: {
+    label: "Origin",
+    color: "#1d4ed8",
+    className: "bg-blue-700",
+  },
+  destination: {
+    label: "Destination",
+    color: "#047857",
+    className: "bg-emerald-700",
+  },
+  transfer: {
+    label: "Transfer point",
+    color: "#b45309",
+    className: "bg-amber-700",
+  },
+  pickup: {
+    label: "Pickup point",
+    color: "#7e22ce",
+    className: "bg-purple-700",
+  },
+  dropoff: {
+    label: "Drop-off point",
+    color: "#be123c",
+    className: "bg-rose-700",
+  },
+} satisfies Record<
+  JourneyMarkerRole,
+  {
+    label: string;
+    color: string;
+    className: string;
+  }
+>;
 
-const markerRoleLabels = {
-  origin: "Origin",
-  pickup: "Pickup point",
-  transfer: "Transfer point",
-  dropoff: "Drop-off point",
-  destination: "Destination",
-} satisfies Record<JourneyMarkerRole, string>;
+const primaryMarkerRoleOrder: readonly JourneyMarkerRole[] = [
+  "origin",
+  "destination",
+  "transfer",
+  "pickup",
+  "dropoff",
+];
+
+function getPrimaryMarkerRole(roles: JourneyMarkerRole[]) {
+  const primaryRole = primaryMarkerRoleOrder.find((role) =>
+    roles.includes(role),
+  );
+
+  if (!primaryRole) {
+    throw new Error("Journey map markers require at least one role.");
+  }
+
+  return primaryRole;
+}
 
 function formatMarkerRoles(roles: JourneyMarkerRole[]) {
-  return roles.map((role) => markerRoleLabels[role]).join(", ");
+  return roles.map((role) => markerRolePresentation[role].label).join(", ");
 }
 
 function getMarkerColor(roles: JourneyMarkerRole[]) {
-  if (roles.includes("origin")) {
-    return "#1d4ed8";
-  }
-
-  if (roles.includes("destination")) {
-    return "#047857";
-  }
-
-  if (roles.includes("transfer")) {
-    return "#b45309";
-  }
-
-  if (roles.includes("pickup")) {
-    return "#7e22ce";
-  }
-
-  return "#be123c";
+  return markerRolePresentation[getPrimaryMarkerRole(roles)].color;
 }
 
 export function JourneyMap({ markers, paths }: JourneyMapProps) {
@@ -63,6 +93,12 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
 
   const hasTransitPaths = paths.features.some(
     (feature) => feature.properties.kind === "transit",
+  );
+
+  const visibleMarkerRoles = primaryMarkerRoleOrder.filter((role) =>
+    markers.features.some(
+      (feature) => getPrimaryMarkerRole(feature.properties.roles) === role,
+    ),
   );
 
   useEffect(() => {
@@ -86,9 +122,15 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
         throw new Error("The journey map has no initial coordinates.");
       }
 
+      if (!publicMapStyleUrl) {
+        throw new Error(
+          "NEXT_PUBLIC_MAP_STYLE_URL is required outside development.",
+        );
+      }
+
       mapInstance = new maplibregl.Map({
         container,
-        style: process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? developmentStyleUrl,
+        style: publicMapStyleUrl,
         center: firstCoordinates,
         zoom: 14,
         cooperativeGestures: true,
@@ -280,7 +322,7 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
         aria-label="Interactive journey map"
         className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100"
       >
-        <div ref={containerRef} className="h-96 w-full" />
+        <div ref={containerRef} className="h-72 w-full sm:h-96" />
 
         {status === "loading" ? (
           <div
@@ -302,32 +344,45 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
         ) : null}
       </div>
 
-      {paths.features.length > 0 ? (
-        <div
-          aria-label="Journey path legend"
-          className="mt-3 flex flex-wrap gap-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"
-        >
-          {hasTransitPaths ? (
-            <div className="flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className="h-1 w-8 rounded-full bg-blue-600"
-              />
-              <span>Transit path</span>
-            </div>
-          ) : null}
+      <div
+        aria-label="Journey map legend"
+        className="mt-3 flex flex-wrap gap-x-5 gap-y-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"
+      >
+        {visibleMarkerRoles.map((role) => (
+          <div key={role} className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className={`size-3 rounded-full ${
+                markerRolePresentation[role].className
+              }`}
+            />
 
-          {hasWalkingPaths ? (
-            <div className="flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className="w-8 border-t-4 border-dashed border-slate-600"
-              />
-              <span>Walking path</span>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+            <span>{markerRolePresentation[role].label}</span>
+          </div>
+        ))}
+
+        {hasTransitPaths ? (
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="h-1 w-8 rounded-full bg-blue-600"
+            />
+
+            <span>Transit path</span>
+          </div>
+        ) : null}
+
+        {hasWalkingPaths ? (
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="w-8 border-t-4 border-dashed border-slate-600"
+            />
+
+            <span>Walking path</span>
+          </div>
+        ) : null}
+      </div>
 
       <details className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer font-semibold text-slate-800">
