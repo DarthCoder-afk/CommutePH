@@ -1,3 +1,4 @@
+import { CommuteMap } from "@/components/commute-map";
 import { CommuteSearchForm } from "@/components/commute-search-form";
 
 const benefits = [
@@ -76,6 +77,31 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      <section
+        aria-labelledby="commute-map-heading"
+        className="mx-auto mt-14 max-w-6xl sm:mt-16"
+      >
+        <div className="max-w-2xl">
+          <p className="text-sm font-semibold text-blue-700">Commute map</p>
+
+          <h2
+            id="commute-map-heading"
+            className="mt-2 text-3xl font-bold tracking-tight text-slate-950"
+          >
+            Explore the service area
+          </h2>
+
+          <p className="mt-3 leading-7 text-slate-600">
+            Search uses curated CommuteMap PH locations. Journey markers and
+            paths appear only when matching guidance is available.
+          </p>
+        </div>
+
+        <div className="mt-6">
+          <CommuteMap />
+        </div>
+      </section>
     </main>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 
-import { publicMapStyleUrl } from "@/config/map-style-url";
+import { publicMapStyle } from "@/config/map-style-url";
 import type { JourneyPathFeatureCollection } from "@/server/journeys/assemble-published-journey-paths";
 
 import type {
@@ -122,7 +122,7 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
         throw new Error("The journey map has no initial coordinates.");
       }
 
-      if (!publicMapStyleUrl) {
+      if (!publicMapStyle) {
         throw new Error(
           "NEXT_PUBLIC_MAP_STYLE_URL is required outside development.",
         );
@@ -130,7 +130,7 @@ export function JourneyMap({ markers, paths }: JourneyMapProps) {
 
       mapInstance = new maplibregl.Map({
         container,
-        style: publicMapStyleUrl,
+        style: publicMapStyle,
         center: firstCoordinates,
         zoom: 14,
         cooperativeGestures: true,
