@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   geometry,
   index,
   integer,
@@ -13,6 +14,21 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+
+const postgisLineString = customType<{
+  data: string;
+  driverData: string;
+}>({
+  dataType() {
+    return "geometry(LineString, 4326)";
+  },
+  toDriver(value) {
+    return value;
+  },
+  fromDriver(value) {
+    return value;
+  },
+});
 
 export const locationKindEnum = pgEnum("location_kind", [
   "area",
@@ -553,6 +569,13 @@ export const journeySegments = pgTable(
 
     publicNotes: text("public_notes"),
 
+    pathGeometry: postgisLineString("path_geometry"),
+
+    pathLastVerifiedAt: timestamp("path_last_verified_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "date",
@@ -605,6 +628,40 @@ export const journeySegments = pgTable(
           AND ${table.estimatedDurationMin} >= 1
           AND ${table.estimatedDurationMax}
             >= ${table.estimatedDurationMin}
+        )
+      `,
+    ),
+
+    check(
+      "journey_segments_path_verification_pair",
+      sql`
+        (
+          ${table.pathGeometry} IS NULL
+          AND ${table.pathLastVerifiedAt} IS NULL
+        )
+        OR
+        (
+          ${table.pathGeometry} IS NOT NULL
+          AND ${table.pathLastVerifiedAt} IS NOT NULL
+        )
+      `,
+    ),
+
+    check(
+      "journey_segments_path_not_empty",
+      sql`
+        ${table.pathGeometry} IS NULL
+        OR NOT ST_IsEmpty(${table.pathGeometry})
+      `,
+    ),
+
+    check(
+      "journey_segments_path_world_bounds",
+      sql`
+        ${table.pathGeometry} IS NULL
+        OR ST_CoveredBy(
+          ${table.pathGeometry},
+          ST_MakeEnvelope(-180, -90, 180, 90, 4326)
         )
       `,
     ),
