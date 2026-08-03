@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LoaderCircle, LocateFixed } from "lucide-react";
 import * as maplibregl from "maplibre-gl";
 
@@ -9,17 +9,12 @@ import type { LocationOption } from "@/components/location-search-input";
 import { publicMapStyle } from "@/config/map-style-url";
 import {
   geolocationStatusMessages,
-  getGeolocationFailureStatus,
   isGeolocationFailure,
-  type GeolocationStatus,
 } from "@/lib/geolocation/geolocation-status";
+import { formatApproximateDistance } from "@/lib/geolocation/format-distance";
 
 type MapStatus = "loading" | "ready" | "error";
 type LocationStatus = "loading" | "ready" | "empty" | "error";
-
-type LocationSearchResponse = {
-  data: LocationOption[];
-};
 
 const initialCenter: [number, number] = [121.0244, 14.5674];
 
@@ -38,6 +33,7 @@ function createLocationPopupContent(properties: Record<string, unknown>) {
   const content = document.createElement("div");
   const name = document.createElement("strong");
   const place = document.createElement("span");
+  const pickupDetails = document.createElement("span");
 
   name.className = "block text-sm text-slate-950";
   name.textContent =
@@ -53,6 +49,16 @@ function createLocationPopupContent(properties: Record<string, unknown>) {
   place.textContent = [area, city].filter(Boolean).join(", ");
 
   content.append(name, place);
+
+  if (typeof properties.pickupDistanceMeters === "number") {
+    pickupDetails.className = "mt-2 block text-xs font-semibold text-amber-800";
+    pickupDetails.textContent =
+      (properties.isSelectedPickup
+        ? "Selected pickup · "
+        : "Nearby pickup · ") +
+      formatApproximateDistance(properties.pickupDistanceMeters);
+    content.append(pickupDetails);
+  }
 
   return content;
 }
@@ -90,7 +96,8 @@ function createCurrentLocationPopupContent() {
   title.textContent = "Your current location";
 
   description.className = "mt-1 block text-xs text-slate-600";
-  description.textContent = "Used only for this map view and not saved.";
+  description.textContent =
+    "Used as your journey origin for this page and not saved.";
 
   content.append(title, description);
 
@@ -98,93 +105,44 @@ function createCurrentLocationPopupContent() {
 }
 
 export function CommuteMap() {
-  const { selectCurrentLocation } = useCurrentLocationOrigin();
+  const {
+    activeSupportedLocations,
+    currentPosition,
+    geolocationStatus,
+    locateOnMap,
+    nearbyPickupCandidates,
+    selectedPickupCandidate,
+    selectPickupCandidate,
+    supportedLocationsStatus,
+  } = useCurrentLocationOrigin();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const geolocationRequestRef = useRef(0);
+  const renderedLocationMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [status, setStatus] = useState<MapStatus>("loading");
-  const [locationStatus, setLocationStatus] =
-    useState<LocationStatus>("loading");
-  const [locationCount, setLocationCount] = useState(0);
-  const [geolocationStatus, setGeolocationStatus] =
-    useState<GeolocationStatus>("idle");
-
-  function handleUseCurrentLocation() {
-    if (!("geolocation" in navigator)) {
-      setGeolocationStatus("unsupported");
-      return;
-    }
-
-    const requestId = geolocationRequestRef.current + 1;
-
-    geolocationRequestRef.current = requestId;
-    setGeolocationStatus("requesting");
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (geolocationRequestRef.current !== requestId) {
-          return;
-        }
-
-        const map = mapRef.current;
-        const longitude = position.coords.longitude;
-        const latitude = position.coords.latitude;
-
-        if (
-          !map ||
-          !Number.isFinite(longitude) ||
-          !Number.isFinite(latitude) ||
-          longitude < -180 ||
-          longitude > 180 ||
-          latitude < -90 ||
-          latitude > 90
-        ) {
-          setGeolocationStatus("position-unavailable");
-          return;
-        }
-
-        const coordinates: [number, number] = [longitude, latitude];
-
-        currentLocationMarkerRef.current?.remove();
-
-        const popup = new maplibregl.Popup({
-          closeButton: true,
-          closeOnClick: true,
-          offset: 20,
-        }).setDOMContent(createCurrentLocationPopupContent());
-
-        currentLocationMarkerRef.current = new maplibregl.Marker({
-          element: createCurrentLocationMarkerElement(),
-          anchor: "center",
-        })
-          .setLngLat(coordinates)
-          .setPopup(popup)
-          .addTo(map);
-
-        map.jumpTo({
-          center: coordinates,
-          zoom: Math.max(map.getZoom(), 14),
-        });
-
-        selectCurrentLocation({ latitude, longitude });
-
-        setGeolocationStatus("success");
-      },
-      (error) => {
-        if (geolocationRequestRef.current !== requestId) {
-          return;
-        }
-
-        setGeolocationStatus(getGeolocationFailureStatus(error.code));
-      },
-      {
-        enableHighAccuracy: false,
-        maximumAge: 60_000,
-        timeout: 10_000,
-      },
-    );
-  }
+  const renderableLocations = useMemo(
+    () => activeSupportedLocations.filter(isRenderableLocation),
+    [activeSupportedLocations],
+  );
+  const nearbyPickupByLocationId = useMemo(
+    () =>
+      new Map(
+        nearbyPickupCandidates.map((candidate) => [
+          candidate.location.id,
+          candidate,
+        ]),
+      ),
+    [nearbyPickupCandidates],
+  );
+  const locationCount = renderableLocations.length;
+  const locationStatus: LocationStatus =
+    supportedLocationsStatus === "loading"
+      ? "loading"
+      : supportedLocationsStatus === "error"
+        ? "error"
+        : locationCount > 0
+          ? "ready"
+          : "empty";
 
   useEffect(() => {
     const container = containerRef.current;
@@ -193,15 +151,10 @@ export function CommuteMap() {
       return;
     }
 
-    const locationsRequest = new AbortController();
-
     let disposed = false;
     let isReady = false;
-    let locationsRequested = false;
     let mapInstance: maplibregl.Map | null = null;
     let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const renderedLocationMarkers: maplibregl.Marker[] = [];
 
     const markReady = () => {
       if (disposed || isReady) {
@@ -223,110 +176,8 @@ export function CommuteMap() {
       });
     };
 
-    const loadSupportedLocations = async (map: maplibregl.Map) => {
-      try {
-        const response = await fetch("/api/locations", {
-          signal: locationsRequest.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            `Location loading failed with status ${response.status}.`,
-          );
-        }
-
-        const payload = (await response.json()) as LocationSearchResponse;
-
-        if (!Array.isArray(payload.data)) {
-          throw new Error(
-            "The locations endpoint returned an invalid response.",
-          );
-        }
-
-        const renderableLocations = payload.data.filter(isRenderableLocation);
-
-        if (disposed) {
-          return;
-        }
-
-        setLocationCount(renderableLocations.length);
-
-        if (renderableLocations.length === 0) {
-          setLocationStatus("empty");
-          return;
-        }
-
-        const bounds = new maplibregl.LngLatBounds();
-
-        for (const location of renderableLocations) {
-          const coordinates: [number, number] = [
-            location.longitude,
-            location.latitude,
-          ];
-
-          const markerElement = document.createElement("button");
-
-          markerElement.type = "button";
-          markerElement.title = location.name;
-          markerElement.setAttribute(
-            "aria-label",
-            `Supported location: ${location.name}`,
-          );
-          markerElement.className =
-            "size-7 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
-
-          const popup = new maplibregl.Popup({
-            closeButton: true,
-            closeOnClick: true,
-            offset: 18,
-          }).setDOMContent(
-            createLocationPopupContent({
-              name: location.name,
-              area: location.area,
-              city: location.city,
-            }),
-          );
-
-          const marker = new maplibregl.Marker({
-            element: markerElement,
-            anchor: "center",
-          })
-            .setLngLat(coordinates)
-            .setPopup(popup)
-            .addTo(map);
-
-          renderedLocationMarkers.push(marker);
-          bounds.extend(coordinates);
-        }
-
-        map.fitBounds(bounds, {
-          padding: 64,
-          maxZoom: 12,
-          duration: 0,
-        });
-
-        setLocationStatus("ready");
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-
-        console.error("Failed to load supported locations:", error);
-
-        if (!disposed) {
-          setLocationCount(0);
-          setLocationStatus("error");
-        }
-      }
-    };
-
     const handleMapReady = () => {
       markReady();
-
-      if (!disposed && !locationsRequested && mapInstance) {
-        locationsRequested = true;
-        void loadSupportedLocations(mapInstance);
-      }
     };
 
     try {
@@ -403,16 +254,10 @@ export function CommuteMap() {
 
     return () => {
       disposed = true;
-      geolocationRequestRef.current += 1;
-      locationsRequest.abort();
 
       currentLocationMarkerRef.current?.remove();
       currentLocationMarkerRef.current = null;
       mapRef.current = null;
-
-      for (const marker of renderedLocationMarkers) {
-        marker.remove();
-      }
 
       if (loadingTimeout) {
         clearTimeout(loadingTimeout);
@@ -422,53 +267,191 @@ export function CommuteMap() {
     };
   }, []);
 
+  useEffect(() => {
+    const map = mapRef.current;
+
+    for (const marker of renderedLocationMarkersRef.current) {
+      marker.remove();
+    }
+
+    renderedLocationMarkersRef.current = [];
+
+    if (!map || status !== "ready" || renderableLocations.length === 0) {
+      return;
+    }
+
+    const bounds = new maplibregl.LngLatBounds();
+
+    for (const location of renderableLocations) {
+      const coordinates: [number, number] = [
+        location.longitude,
+        location.latitude,
+      ];
+      const markerElement = document.createElement("button");
+      const pickupCandidate = nearbyPickupByLocationId.get(location.id);
+      const isSelectedPickup =
+        selectedPickupCandidate?.location.id === location.id;
+
+      markerElement.type = "button";
+      markerElement.title = location.name;
+      markerElement.setAttribute(
+        "aria-label",
+        `Supported location: ${location.name}`,
+      );
+      if (pickupCandidate) {
+        markerElement.setAttribute(
+          "aria-label",
+          (isSelectedPickup
+            ? "Selected pickup point: "
+            : "Nearby pickup point: ") + location.name,
+        );
+      }
+
+      markerElement.className = isSelectedPickup
+        ? "size-9 cursor-pointer rounded-full border-[3px] border-white bg-emerald-700 shadow-lg ring-4 ring-emerald-400/40 transition-colors hover:bg-emerald-900 focus:ring-4 focus:ring-emerald-300 focus:outline-none"
+        : pickupCandidate
+          ? "size-8 cursor-pointer rounded-full border-[3px] border-white bg-amber-500 shadow-lg ring-4 ring-amber-400/35 transition-colors hover:bg-amber-700 focus:ring-4 focus:ring-amber-300 focus:outline-none"
+          : "size-7 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
+
+      if (pickupCandidate) {
+        markerElement.addEventListener("click", () => {
+          selectPickupCandidate(location.id);
+        });
+      }
+
+      const popup = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        offset: 18,
+      }).setDOMContent(
+        createLocationPopupContent({
+          name: location.name,
+          area: location.area,
+          city: location.city,
+          pickupDistanceMeters: pickupCandidate?.distanceMeters,
+          isSelectedPickup,
+        }),
+      );
+
+      const marker = new maplibregl.Marker({
+        element: markerElement,
+        anchor: "center",
+      })
+        .setLngLat(coordinates)
+        .setPopup(popup)
+        .addTo(map);
+
+      renderedLocationMarkersRef.current.push(marker);
+      bounds.extend(coordinates);
+    }
+
+    if (!currentPosition) {
+      map.fitBounds(bounds, {
+        padding: 64,
+        maxZoom: 12,
+        duration: 0,
+      });
+    }
+
+    return () => {
+      for (const marker of renderedLocationMarkersRef.current) {
+        marker.remove();
+      }
+
+      renderedLocationMarkersRef.current = [];
+    };
+  }, [
+    currentPosition,
+    nearbyPickupByLocationId,
+    renderableLocations,
+    selectedPickupCandidate,
+    selectPickupCandidate,
+    status,
+  ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!map || status !== "ready" || !currentPosition) {
+      return;
+    }
+
+    const coordinates: [number, number] = [
+      currentPosition.coordinates.longitude,
+      currentPosition.coordinates.latitude,
+    ];
+
+    currentLocationMarkerRef.current?.remove();
+
+    const popup = new maplibregl.Popup({
+      closeButton: true,
+      closeOnClick: true,
+      offset: 20,
+    }).setDOMContent(createCurrentLocationPopupContent());
+
+    currentLocationMarkerRef.current = new maplibregl.Marker({
+      element: createCurrentLocationMarkerElement(),
+      anchor: "center",
+    })
+      .setLngLat(coordinates)
+      .setPopup(popup)
+      .addTo(map);
+
+    if (nearbyPickupCandidates.length > 0) {
+      const bounds = new maplibregl.LngLatBounds(coordinates, coordinates);
+
+      for (const candidate of nearbyPickupCandidates) {
+        bounds.extend([
+          candidate.location.longitude,
+          candidate.location.latitude,
+        ]);
+      }
+
+      map.fitBounds(bounds, {
+        padding: 72,
+        maxZoom: 14,
+        duration: 0,
+      });
+    } else {
+      map.jumpTo({
+        center: coordinates,
+        zoom: Math.max(map.getZoom(), 14),
+      });
+    }
+  }, [currentPosition, nearbyPickupCandidates, status]);
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <button
-          type="button"
-          aria-describedby="current-location-status"
-          disabled={status !== "ready" || geolocationStatus === "requesting"}
-          onClick={handleUseCurrentLocation}
-          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-800 transition-colors hover:border-blue-300 hover:bg-blue-100 focus:ring-4 focus:ring-blue-200 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
-        >
-          {geolocationStatus === "requesting" ? (
-            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-          ) : (
-            <LocateFixed aria-hidden="true" className="size-4" />
-          )}
-
-          {geolocationStatus === "requesting"
-            ? "Locating…"
-            : geolocationStatus === "success"
-              ? "Update my location"
-              : "Use my current location"}
-        </button>
-
-        <p
-          id="current-location-status"
-          role={isGeolocationFailure(geolocationStatus) ? "alert" : "status"}
-          aria-live="polite"
-          className={`text-sm leading-6 ${
-            isGeolocationFailure(geolocationStatus)
-              ? "text-red-700"
-              : geolocationStatus === "success"
-                ? "text-emerald-700"
-                : "text-slate-600"
-          }`}
-        >
-          {geolocationStatus === "success"
-            ? "Current location is selected as your starting point. Your precise position is kept in this browser session and is not saved."
-            : geolocationStatusMessages[geolocationStatus]}
-        </p>
-      </div>
-
       <div
         role="region"
         aria-label="Interactive commute map"
         className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-lg shadow-slate-900/5"
       >
         <div ref={containerRef} className="h-80 w-full sm:h-[28rem]" />
+
+        <button
+          type="button"
+          aria-label={
+            geolocationStatus === "success"
+              ? "Update current location"
+              : "Use current location"
+          }
+          title={
+            geolocationStatus === "success"
+              ? "Update current location"
+              : "Use current location"
+          }
+          aria-describedby="current-location-status"
+          disabled={status !== "ready" || geolocationStatus === "requesting"}
+          onClick={locateOnMap}
+          className="absolute top-4 left-4 z-10 flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-blue-800 shadow-md transition-colors hover:bg-blue-50 focus:ring-4 focus:ring-blue-200 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+        >
+          {geolocationStatus === "requesting" ? (
+            <LoaderCircle aria-hidden="true" className="size-5 animate-spin" />
+          ) : (
+            <LocateFixed aria-hidden="true" className="size-5" />
+          )}
+        </button>
 
         {status === "loading" ? (
           <div
@@ -494,7 +477,7 @@ export function CommuteMap() {
           <div
             role="status"
             aria-live="polite"
-            className="pointer-events-none absolute top-4 left-4 rounded-full bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-md"
+            className="pointer-events-none absolute top-4 left-18 rounded-full bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-md"
           >
             Loading supported locations…
           </div>
@@ -504,10 +487,29 @@ export function CommuteMap() {
           <div
             role="status"
             aria-live="polite"
-            className="pointer-events-none absolute top-4 left-4 rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold text-white shadow-md"
+            className="pointer-events-none absolute top-4 left-18 rounded-full bg-blue-700 px-3 py-2 text-xs font-semibold text-white shadow-md"
           >
             {locationCount} supported{" "}
             {locationCount === 1 ? "location" : "locations"}
+          </div>
+        ) : null}
+
+        {status === "ready" && nearbyPickupCandidates.length > 0 ? (
+          <div className="pointer-events-none absolute bottom-8 left-4 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-md">
+            <span className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="size-3 rounded-full bg-amber-500"
+              />
+              Nearby pickup
+            </span>
+            <span className="mt-1 flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="size-3 rounded-full bg-emerald-700"
+              />
+              Selected pickup
+            </span>
           </div>
         ) : null}
 
@@ -530,6 +532,23 @@ export function CommuteMap() {
           </div>
         ) : null}
       </div>
+
+      <p
+        id="current-location-status"
+        role={isGeolocationFailure(geolocationStatus) ? "alert" : "status"}
+        aria-live="polite"
+        className={`text-sm leading-6 ${
+          isGeolocationFailure(geolocationStatus)
+            ? "text-red-700"
+            : geolocationStatus === "success"
+              ? "text-emerald-700"
+              : "text-slate-600"
+        }`}
+      >
+        {geolocationStatus === "success"
+          ? "Current location is displayed on the map. Your precise position is kept on this page and is not saved."
+          : geolocationStatusMessages[geolocationStatus]}
+      </p>
     </div>
   );
 }

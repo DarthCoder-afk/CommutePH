@@ -20,6 +20,15 @@ type LocationSearchResponse = {
 
 type SearchStatus = "idle" | "loading" | "success" | "error";
 
+type LocationSearchActionOption = {
+  label: string;
+  description: string;
+  disabled?: boolean;
+  onSelect: () => void;
+};
+
+const actionOptionIndex = -2;
+
 type LocationSearchInputProps = {
   id: string;
   name: string;
@@ -28,6 +37,7 @@ type LocationSearchInputProps = {
   query: string;
   value: LocationOption | null;
   selectedLabel?: string | null;
+  actionOption?: LocationSearchActionOption;
   onQueryChange: (query: string) => void;
   onSelectionChange: (location: LocationOption | null) => void;
 };
@@ -40,6 +50,7 @@ export function LocationSearchInput({
   query,
   value,
   selectedLabel = value?.name ?? null,
+  actionOption,
   onQueryChange,
   onSelectionChange,
 }: LocationSearchInputProps) {
@@ -50,6 +61,7 @@ export function LocationSearchInput({
 
   const listboxId = `${id}-listbox`;
   const statusId = `${id}-status`;
+  const hasActionOption = Boolean(actionOption);
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -90,7 +102,13 @@ export function LocationSearchInput({
 
         setOptions(payload.data);
         setStatus("success");
-        setActiveIndex(payload.data.length > 0 ? 0 : -1);
+        setActiveIndex(
+          hasActionOption
+            ? actionOptionIndex
+            : payload.data.length > 0
+              ? 0
+              : -1,
+        );
         setIsOpen(true);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -101,7 +119,7 @@ export function LocationSearchInput({
 
         setOptions([]);
         setStatus("error");
-        setActiveIndex(-1);
+        setActiveIndex(hasActionOption ? actionOptionIndex : -1);
         setIsOpen(true);
       }
     }, 300);
@@ -110,7 +128,7 @@ export function LocationSearchInput({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [query, selectedLabel]);
+  }, [hasActionOption, query, selectedLabel]);
 
   function selectLocation(location: LocationOption) {
     onQueryChange(location.name);
@@ -121,6 +139,16 @@ export function LocationSearchInput({
     onSelectionChange(location);
   }
 
+  function selectActionOption() {
+    if (!actionOption || actionOption.disabled) {
+      return;
+    }
+
+    setIsOpen(false);
+    setActiveIndex(-1);
+    actionOption.onSelect();
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setIsOpen(false);
@@ -128,16 +156,28 @@ export function LocationSearchInput({
       return;
     }
 
-    if (!isOpen || options.length === 0) {
+    if (!isOpen) {
       return;
     }
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
 
-      setActiveIndex((currentIndex) =>
-        currentIndex >= options.length - 1 ? 0 : currentIndex + 1,
-      );
+      setActiveIndex((currentIndex) => {
+        if (currentIndex === actionOptionIndex) {
+          return options.length > 0 ? 0 : actionOptionIndex;
+        }
+
+        if (options.length === 0) {
+          return hasActionOption ? actionOptionIndex : -1;
+        }
+
+        return currentIndex >= options.length - 1
+          ? hasActionOption
+            ? actionOptionIndex
+            : 0
+          : currentIndex + 1;
+      });
 
       return;
     }
@@ -145,14 +185,28 @@ export function LocationSearchInput({
     if (event.key === "ArrowUp") {
       event.preventDefault();
 
-      setActiveIndex((currentIndex) =>
-        currentIndex <= 0 ? options.length - 1 : currentIndex - 1,
-      );
+      setActiveIndex((currentIndex) => {
+        if (currentIndex === actionOptionIndex) {
+          return options.length > 0 ? options.length - 1 : actionOptionIndex;
+        }
+
+        if (currentIndex <= 0 && hasActionOption) {
+          return actionOptionIndex;
+        }
+
+        return currentIndex <= 0 ? options.length - 1 : currentIndex - 1;
+      });
 
       return;
     }
 
     if (event.key === "Enter") {
+      if (activeIndex === actionOptionIndex) {
+        event.preventDefault();
+        selectActionOption();
+        return;
+      }
+
       const activeOption = options[activeIndex];
 
       if (activeOption) {
@@ -185,7 +239,11 @@ export function LocationSearchInput({
         aria-expanded={isOpen}
         aria-controls={listboxId}
         aria-activedescendant={
-          activeOption ? `${listboxId}-${activeOption.id}` : undefined
+          activeIndex === actionOptionIndex && actionOption
+            ? `${listboxId}-action`
+            : activeOption
+              ? `${listboxId}-${activeOption.id}`
+              : undefined
         }
         aria-describedby={statusId}
         onChange={(event) => {
@@ -197,7 +255,10 @@ export function LocationSearchInput({
           setActiveIndex(-1);
         }}
         onFocus={() => {
-          if (query.trim().length >= 2 && status !== "idle") {
+          if (actionOption) {
+            setActiveIndex(actionOptionIndex);
+            setIsOpen(true);
+          } else if (query.trim().length >= 2 && status !== "idle") {
             setIsOpen(true);
           }
         }}
@@ -232,8 +293,37 @@ export function LocationSearchInput({
           aria-label={`${label} suggestions`}
           className="absolute z-20 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
         >
+          {actionOption ? (
+            <li>
+              <button
+                id={`${listboxId}-action`}
+                type="button"
+                role="option"
+                aria-selected={selectedLabel === actionOption.label}
+                disabled={actionOption.disabled}
+                tabIndex={-1}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={selectActionOption}
+                className={`w-full rounded-lg px-3 py-3 text-left transition disabled:cursor-wait disabled:text-slate-500 ${
+                  activeIndex === actionOptionIndex
+                    ? "bg-blue-50 text-blue-950"
+                    : "text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                <span className="block font-medium">{actionOption.label}</span>
+                <span className="mt-1 block text-sm text-slate-500">
+                  {actionOption.description}
+                </span>
+              </button>
+            </li>
+          ) : null}
+
           {status === "loading" ? (
-            <li className="px-3 py-3 text-sm text-slate-500">Searching…</li>
+            <li className="border-t border-slate-100 px-3 py-3 text-sm text-slate-500">
+              Searching…
+            </li>
           ) : null}
 
           {status === "error" ? (

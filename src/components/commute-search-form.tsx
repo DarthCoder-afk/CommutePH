@@ -18,6 +18,11 @@ import {
   LocationSearchInput,
   type LocationOption,
 } from "@/components/location-search-input";
+import {
+  geolocationStatusMessages,
+  isGeolocationFailure,
+} from "@/lib/geolocation/geolocation-status";
+import { formatApproximateDistance } from "@/lib/geolocation/format-distance";
 import type { OriginSelection } from "@/lib/geolocation/origin-selection";
 
 type JourneySearchSuccess = {
@@ -96,7 +101,17 @@ function readPersistedSearch(): PersistedSearch | null {
 }
 
 export function CommuteSearchForm() {
-  const { currentLocationOrigin } = useCurrentLocationOrigin();
+  const {
+    clearCurrentLocationOrigin,
+    currentLocationOrigin,
+    geolocationStatus,
+    nearbyPickupCandidates,
+    pickupSearchRadiusMeters,
+    pickupSearchStatus,
+    requestCurrentLocation,
+    selectedPickupCandidate,
+    selectPickupCandidate,
+  } = useCurrentLocationOrigin();
   const [origin, setOrigin] = useState<OriginSelection | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
   const [originQuery, setOriginQuery] = useState("");
@@ -250,6 +265,7 @@ export function CommuteSearchForm() {
   }
 
   function handleOriginChange(location: LocationOption | null) {
+    clearCurrentLocationOrigin();
     setOrigin(
       location
         ? {
@@ -304,9 +320,25 @@ export function CommuteSearchForm() {
     if (origin.type === "CURRENT_LOCATION") {
       setJourneys([]);
       setStatus("notice");
-      setMessage(
-        "Current location is selected. Nearby pickup journey search will be enabled after pickup candidates are added.",
-      );
+
+      if (pickupSearchStatus === "loading") {
+        setMessage("Checking for supported pickup points near you.");
+      } else if (pickupSearchStatus === "error") {
+        setMessage(
+          "Supported pickup points could not be loaded. Please try again.",
+        );
+      } else if (pickupSearchStatus === "empty") {
+        setMessage(
+          "No supported commute pickup point was found near your current location.",
+        );
+      } else {
+        setMessage(
+          `${nearbyPickupCandidates.length} nearby pickup ${
+            nearbyPickupCandidates.length === 1 ? "point is" : "points are"
+          } available. Journey matching will be added in the next checkpoint.`,
+        );
+      }
+
       return;
     }
 
@@ -339,9 +371,124 @@ export function CommuteSearchForm() {
               ? "Current location"
               : origin?.location.name
           }
+          actionOption={{
+            label: "Current location",
+            description:
+              geolocationStatus === "requesting"
+                ? "Requesting your device location…"
+                : "Use your device position as the journey starting point.",
+            disabled: geolocationStatus === "requesting",
+            onSelect: requestCurrentLocation,
+          }}
           onQueryChange={setOriginQuery}
           onSelectionChange={handleOriginChange}
         />
+
+        {isGeolocationFailure(geolocationStatus) ? (
+          <p role="alert" className="text-sm leading-6 text-red-700">
+            {geolocationStatusMessages[geolocationStatus]}
+          </p>
+        ) : null}
+
+        {origin?.type === "CURRENT_LOCATION" ? (
+          <p
+            role={pickupSearchStatus === "error" ? "alert" : "status"}
+            aria-live="polite"
+            className={`text-sm leading-6 ${
+              pickupSearchStatus === "error"
+                ? "text-red-700"
+                : pickupSearchStatus === "empty"
+                  ? "text-amber-800"
+                  : "text-emerald-700"
+            }`}
+          >
+            {pickupSearchStatus === "loading"
+              ? "Checking for supported pickup points near you…"
+              : pickupSearchStatus === "error"
+                ? "Supported pickup points could not be loaded. Please refresh and try again."
+                : pickupSearchStatus === "empty"
+                  ? "No supported commute pickup point was found near your current location."
+                  : `${nearbyPickupCandidates.length} nearby pickup ${
+                      nearbyPickupCandidates.length === 1 ? "point" : "points"
+                    } found within ${pickupSearchRadiusMeters / 1_000} km.`}
+          </p>
+        ) : null}
+
+        {origin?.type === "CURRENT_LOCATION" &&
+        pickupSearchStatus === "ready" ? (
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-semibold text-slate-800">
+              Suggested pickup points
+            </legend>
+
+            <p className="text-xs leading-5 text-slate-500">
+              Ordered by straight-line proximity. Actual walking distance may be
+              longer.
+            </p>
+
+            <div className="space-y-2">
+              {nearbyPickupCandidates.map((candidate, index) => {
+                const isSelected =
+                  selectedPickupCandidate?.location.id ===
+                  candidate.location.id;
+
+                return (
+                  <label
+                    key={candidate.location.id}
+                    className={`block cursor-pointer rounded-xl border p-3 transition ${
+                      isSelected
+                        ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-100"
+                        : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50"
+                    }`}
+                  >
+                    <span className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="pickup-location"
+                        value={candidate.location.slug}
+                        checked={isSelected}
+                        onChange={() => {
+                          selectPickupCandidate(candidate.location.id);
+                        }}
+                        className="mt-1 size-4 accent-emerald-700"
+                      />
+
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-950">
+                            {candidate.location.name}
+                          </span>
+
+                          {index === 0 ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                              Nearest
+                            </span>
+                          ) : null}
+
+                          {isSelected ? (
+                            <span className="rounded-full bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-white">
+                              Selected
+                            </span>
+                          ) : null}
+                        </span>
+
+                        <span className="mt-1 block text-sm text-slate-600">
+                          {candidate.location.area
+                            ? `${candidate.location.area}, ${candidate.location.city}`
+                            : candidate.location.city}
+                        </span>
+
+                        <span className="mt-1 block text-xs font-medium text-slate-500">
+                          {formatApproximateDistance(candidate.distanceMeters)}
+                        </span>
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
 
         <div className="flex items-center gap-3">
           <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />

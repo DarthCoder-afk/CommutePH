@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { findNearestLocation } from "./find-nearest-location";
+import {
+  findNearbyLocations,
+  findNearestLocation,
+} from "./find-nearest-location";
 
 const locations = [
   {
@@ -38,5 +41,32 @@ test("returns null for an invalid supplied position", () => {
   assert.equal(
     findNearestLocation({ longitude: 181, latitude: 14.551 }, locations),
     null,
+  );
+});
+
+test("returns nearby locations ordered by distance", () => {
+  const nearby = findNearbyLocations(
+    { longitude: 121.0235, latitude: 14.5507 },
+    locations,
+    5_000,
+  );
+
+  assert.deepEqual(
+    nearby.map((candidate) => candidate.location.id),
+    ["one-ayala", "bgc-high-street"],
+  );
+  assert.ok(nearby[0]!.distanceMeters < nearby[1]!.distanceMeters);
+});
+
+test("excludes locations outside the maximum pickup radius", () => {
+  const nearby = findNearbyLocations(
+    { longitude: 121.0235, latitude: 14.5507 },
+    locations,
+    1_000,
+  );
+
+  assert.deepEqual(
+    nearby.map((candidate) => candidate.location.id),
+    ["one-ayala"],
   );
 });

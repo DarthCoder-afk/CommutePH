@@ -3,6 +3,13 @@ export type Coordinates = {
   latitude: number;
 };
 
+export type NearbyLocation<T extends Coordinates> = {
+  location: T;
+  distanceMeters: number;
+};
+
+const earthRadiusMeters = 6_371_000;
+
 function isValidCoordinates(coordinates: Coordinates) {
   return (
     Number.isFinite(coordinates.longitude) &&
@@ -32,6 +39,45 @@ function getAngularDistance(first: Coordinates, second: Coordinates) {
   );
 }
 
+export function getDistanceMeters(
+  first: Coordinates,
+  second: Coordinates,
+): number | null {
+  if (!isValidCoordinates(first) || !isValidCoordinates(second)) {
+    return null;
+  }
+
+  const angularDistance = Math.min(getAngularDistance(first, second), 1);
+  const centralAngle =
+    2 * Math.atan2(Math.sqrt(angularDistance), Math.sqrt(1 - angularDistance));
+
+  return earthRadiusMeters * centralAngle;
+}
+
+export function findNearbyLocations<T extends Coordinates>(
+  position: Coordinates,
+  candidates: readonly T[],
+  maximumRadiusMeters: number,
+): NearbyLocation<T>[] {
+  if (
+    !isValidCoordinates(position) ||
+    !Number.isFinite(maximumRadiusMeters) ||
+    maximumRadiusMeters <= 0
+  ) {
+    return [];
+  }
+
+  return candidates
+    .flatMap((location) => {
+      const distanceMeters = getDistanceMeters(position, location);
+
+      return distanceMeters !== null && distanceMeters <= maximumRadiusMeters
+        ? [{ location, distanceMeters }]
+        : [];
+    })
+    .sort((first, second) => first.distanceMeters - second.distanceMeters);
+}
+
 export function findNearestLocation<T extends Coordinates>(
   position: Coordinates,
   candidates: readonly T[],
@@ -48,7 +94,11 @@ export function findNearestLocation<T extends Coordinates>(
       continue;
     }
 
-    const distance = getAngularDistance(position, candidate);
+    const distance = getDistanceMeters(position, candidate);
+
+    if (distance === null) {
+      continue;
+    }
 
     if (distance < nearestDistance) {
       nearestLocation = candidate;
