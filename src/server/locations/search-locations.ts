@@ -24,6 +24,10 @@ export async function searchActiveLocations(query: string) {
             ilike(locations.name, `%${escapeLikePattern(normalizedQuery)}%`),
             ilike(locations.city, `%${escapeLikePattern(normalizedQuery)}%`),
             ilike(locations.area, `%${escapeLikePattern(normalizedQuery)}%`),
+            ilike(
+              locations.description,
+              `%${escapeLikePattern(normalizedQuery)}%`,
+            ),
           ),
         );
 
@@ -41,7 +45,7 @@ export async function searchActiveLocations(query: string) {
     .from(locations)
     .where(searchCondition)
     .orderBy(asc(locations.name))
-    .limit(10);
+    .limit(normalizedQuery.length === 0 ? 50 : 10);
 
   return locationRows.map(({ coordinates, ...location }) => ({
     ...location,

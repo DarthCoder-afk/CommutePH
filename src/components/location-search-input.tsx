@@ -7,8 +7,11 @@ export type LocationOption = {
   name: string;
   slug: string;
   kind: string;
+  description: string | null;
   city: string;
   area: string | null;
+  longitude: number;
+  latitude: number;
 };
 
 type LocationSearchResponse = {

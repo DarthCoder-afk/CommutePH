@@ -57,7 +57,11 @@ function isLocationOption(value: unknown): value is LocationOption {
     typeof location.slug === "string" &&
     typeof location.kind === "string" &&
     typeof location.city === "string" &&
-    (location.area === null || typeof location.area === "string")
+    (location.area === null || typeof location.area === "string") &&
+    typeof location.longitude === "number" &&
+    Number.isFinite(location.longitude) &&
+    typeof location.latitude === "number" &&
+    Number.isFinite(location.latitude)
   );
 }
 
