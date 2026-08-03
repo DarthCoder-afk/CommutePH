@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight, BadgeCheck, Clock3, Coins, Repeat2 } from "lucide-react";
 
 export type JourneySummary = {
   id: string;
@@ -89,7 +90,7 @@ export function JourneySummaryCard({
 }: JourneySummaryCardProps) {
   const Title = titleElement;
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Title className="text-lg font-bold text-slate-950">
@@ -103,7 +104,8 @@ export function JourneySummaryCard({
           </p>
         </div>
 
-        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+          <BadgeCheck aria-hidden="true" className="size-4" />
           Verified
         </span>
       </div>
@@ -112,7 +114,8 @@ export function JourneySummaryCard({
 
       <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-slate-50 p-3">
-          <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <dt className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <Clock3 aria-hidden="true" className="size-4" />
             Duration
           </dt>
 
@@ -125,7 +128,8 @@ export function JourneySummaryCard({
         </div>
 
         <div className="rounded-xl bg-slate-50 p-3">
-          <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <dt className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <Coins aria-hidden="true" className="size-4" />
             Fare
           </dt>
 
@@ -139,7 +143,8 @@ export function JourneySummaryCard({
         </div>
 
         <div className="rounded-xl bg-slate-50 p-3">
-          <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+          <dt className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <Repeat2 aria-hidden="true" className="size-4" />
             Transfers
           </dt>
 
@@ -159,12 +164,10 @@ export function JourneySummaryCard({
       {showDetailsLink ? (
         <Link
           href={`/journeys/${journey.slug}`}
-          className="mt-5 inline-flex font-semibold text-blue-700 hover:text-blue-900 hover:underline focus:ring-4 focus:ring-blue-100 focus:outline-none"
+          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white transition hover:bg-blue-800 focus:ring-4 focus:ring-blue-200 focus:outline-none"
         >
           View step-by-step directions
-          <span className="ml-2" aria-hidden="true">
-            →
-          </span>
+          <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
       ) : null}
     </article>

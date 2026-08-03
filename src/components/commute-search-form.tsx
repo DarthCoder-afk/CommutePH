@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, SearchX } from "lucide-react";
 
 import {
   JourneySummaryCard,
@@ -132,7 +132,7 @@ export function CommuteSearchForm() {
 
       setMessage(
         payload.data.length === 0
-          ? "No verified direct journeys were found for these locations."
+          ? null
           : `${payload.data.length} verified ${
               payload.data.length === 1 ? "journey" : "journeys"
             } found.`,
@@ -224,6 +224,27 @@ export function CommuteSearchForm() {
         >
           {message}
         </div>
+      ) : null}
+
+      {status === "success" && journeys.length === 0 ? (
+        <section
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center"
+        >
+          <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+            <SearchX aria-hidden="true" className="size-6" />
+          </span>
+
+          <h3 className="mt-4 font-bold text-slate-950">
+            No verified journey yet
+          </h3>
+
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
+            This route may still be awaiting review or field verification. Try
+            another pair of active locations.
+          </p>
+        </section>
       ) : null}
 
       {status === "success" && journeys.length > 0 ? (
