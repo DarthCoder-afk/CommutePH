@@ -19,6 +19,8 @@ import {
   type PlaceSearchOption,
   type SearchLocationOption,
 } from "@/components/location-search-input";
+import { NearbySupportedLocationSelector } from "@/components/nearby-supported-location-selector";
+import { useNearbySupportedLocations } from "@/components/use-nearby-supported-locations";
 import {
   geolocationStatusMessages,
   isGeolocationFailure,
@@ -147,6 +149,17 @@ export function CommuteSearchForm() {
     useState<CurrentLocationJourneyOption[]>([]);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const originPlace = origin?.type === "SEARCHED_PLACE" ? origin.place : null;
+  const destinationPlace =
+    destination && isPlaceSearchOption(destination) ? destination : null;
+  const originPlaceResolution = useNearbySupportedLocations(
+    originPlace,
+    pickupSearchRadiusMeters,
+  );
+  const destinationPlaceResolution = useNearbySupportedLocations(
+    destinationPlace,
+    pickupSearchRadiusMeters,
+  );
 
   const activeRequest = useRef<AbortController | null>(null);
   const resultsRegionRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +199,10 @@ export function CommuteSearchForm() {
     async (
       selectedOrigin: LocationOption,
       selectedDestination: LocationOption,
+      options: {
+        persist?: boolean;
+        resolutionMessage?: string;
+      } = {},
     ) => {
       activeRequest.current?.abort();
 
@@ -227,24 +244,33 @@ export function CommuteSearchForm() {
           throw new Error("The journey search returned an invalid response.");
         }
 
-        window.sessionStorage.setItem(
-          persistedSearchKey,
-          JSON.stringify({
-            origin: selectedOrigin,
-            destination: selectedDestination,
-          } satisfies PersistedSearch),
-        );
+        if (options.persist !== false) {
+          window.sessionStorage.setItem(
+            persistedSearchKey,
+            JSON.stringify({
+              origin: selectedOrigin,
+              destination: selectedDestination,
+            } satisfies PersistedSearch),
+          );
+        }
 
         setJourneys(payload.data);
         setCurrentLocationJourneyOptions([]);
         setStatus("success");
 
-        setMessage(
+        const resultMessage =
           payload.data.length === 0
-            ? null
+            ? "No verified journey connects these supported commute points yet."
             : `${payload.data.length} verified ${
                 payload.data.length === 1 ? "journey" : "journeys"
-              } found.`,
+              } found.`;
+
+        setMessage(
+          options.resolutionMessage
+            ? `${options.resolutionMessage} ${resultMessage}`
+            : payload.data.length === 0
+              ? null
+              : resultMessage,
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -326,6 +352,20 @@ export function CommuteSearchForm() {
       window.clearTimeout(applySuggestionTimeout);
     };
   }, [currentLocationOrigin, setSelectedOriginPlace]);
+
+  useEffect(() => {
+    if (!destinationPlace) {
+      return;
+    }
+
+    setPickupDestination(
+      destinationPlaceResolution.selectedCandidate?.location ?? null,
+    );
+  }, [
+    destinationPlace,
+    destinationPlaceResolution.selectedCandidate,
+    setPickupDestination,
+  ]);
 
   useEffect(() => {
     if (
@@ -447,13 +487,58 @@ export function CommuteSearchForm() {
       return;
     }
 
-    if (origin.type === "SEARCHED_PLACE" || isPlaceSearchOption(destination)) {
+    const usesGeneralOrigin = origin.type === "SEARCHED_PLACE";
+    const usesGeneralDestination = isPlaceSearchOption(destination);
+
+    if (
+      (usesGeneralOrigin && originPlaceResolution.status === "loading") ||
+      (usesGeneralDestination &&
+        destinationPlaceResolution.status === "loading")
+    ) {
       setJourneys([]);
       setCurrentLocationJourneyOptions([]);
       setStatus("notice");
       setMessage(
-        "This general place is shown on the map, but verified commute guidance is not available from it yet. Choose a supported commute point to search journeys.",
+        "Wait while nearby supported commute points are being checked.",
       );
+      return;
+    }
+
+    if (
+      (usesGeneralOrigin && originPlaceResolution.status === "error") ||
+      (usesGeneralDestination && destinationPlaceResolution.status === "error")
+    ) {
+      setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
+      setStatus("error");
+      setMessage(
+        "A nearby supported commute point could not be loaded. Select the place again and retry.",
+      );
+      return;
+    }
+
+    if (
+      (usesGeneralOrigin && !originPlaceResolution.selectedCandidate) ||
+      (usesGeneralDestination && !destinationPlaceResolution.selectedCandidate)
+    ) {
+      setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
+      setStatus("notice");
+      setMessage(
+        `No supported commute point is available within ${pickupSearchRadiusMeters / 1_000} km of the selected general place.`,
+      );
+      return;
+    }
+
+    const resolvedDestination = usesGeneralDestination
+      ? destinationPlaceResolution.selectedCandidate?.location
+      : destination;
+
+    if (!resolvedDestination) {
+      setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
+      setStatus("error");
+      setMessage("Select a supported destination.");
       return;
     }
 
@@ -519,14 +604,39 @@ export function CommuteSearchForm() {
       return;
     }
 
-    if (origin.location.slug === destination.slug) {
+    const resolvedOrigin = usesGeneralOrigin
+      ? originPlaceResolution.selectedCandidate?.location
+      : origin.location;
+
+    if (!resolvedOrigin) {
       setJourneys([]);
       setStatus("error");
-      setMessage("Origin and destination must be different.");
+      setMessage("Select a supported starting point.");
       return;
     }
 
-    void searchJourneys(origin.location, destination);
+    if (resolvedOrigin.slug === resolvedDestination.slug) {
+      setJourneys([]);
+      setStatus("error");
+      setMessage(
+        "The selected places resolve to the same supported commute point. Choose a different origin or destination.",
+      );
+      return;
+    }
+
+    const resolutionParts = [
+      usesGeneralOrigin
+        ? `Starting from ${resolvedOrigin.name}, the selected supported point near ${originPlace?.name}.`
+        : null,
+      usesGeneralDestination
+        ? `Ending at ${resolvedDestination.name}, the selected supported point near ${destinationPlace?.name}.`
+        : null,
+    ].filter((part) => part !== null);
+
+    void searchJourneys(resolvedOrigin, resolvedDestination, {
+      persist: !usesGeneralOrigin && !usesGeneralDestination,
+      resolutionMessage: resolutionParts.join(" "),
+    });
   }
 
   return (
@@ -568,6 +678,20 @@ export function CommuteSearchForm() {
           onQueryChange={setOriginQuery}
           onSelectionChange={handleOriginChange}
         />
+
+        {originPlace ? (
+          <NearbySupportedLocationSelector
+            candidates={originPlaceResolution.candidates}
+            fieldName="origin-supported-location"
+            label="Supported starting points nearby"
+            radiusMeters={pickupSearchRadiusMeters}
+            selectedLocationId={
+              originPlaceResolution.selectedCandidate?.location.id ?? null
+            }
+            status={originPlaceResolution.status}
+            onSelectionChange={originPlaceResolution.selectCandidate}
+          />
+        ) : null}
 
         {isGeolocationFailure(geolocationStatus) ? (
           <p role="alert" className="text-sm leading-6 text-red-700">
@@ -757,6 +881,20 @@ export function CommuteSearchForm() {
           onQueryChange={setDestinationQuery}
           onSelectionChange={handleDestinationChange}
         />
+
+        {destinationPlace ? (
+          <NearbySupportedLocationSelector
+            candidates={destinationPlaceResolution.candidates}
+            fieldName="destination-supported-location"
+            label="Supported destinations nearby"
+            radiusMeters={pickupSearchRadiusMeters}
+            selectedLocationId={
+              destinationPlaceResolution.selectedCandidate?.location.id ?? null
+            }
+            status={destinationPlaceResolution.status}
+            onSelectionChange={destinationPlaceResolution.selectCandidate}
+          />
+        ) : null}
       </div>
 
       <button
