@@ -17,6 +17,57 @@ type MapStatus = "loading" | "ready" | "error";
 type LocationStatus = "loading" | "ready" | "empty" | "error";
 
 const initialCenter: [number, number] = [121.0244, 14.5674];
+const selectedJourneyLayerIds = {
+  initialWalking: "selected-journey-initial-walking",
+  publishedWalking: "selected-journey-published-walking",
+  publishedTransit: "selected-journey-published-transit",
+} as const;
+const selectedJourneySourceIds = {
+  initialWalking: "selected-journey-initial-walking-source",
+  publishedPaths: "selected-journey-published-paths-source",
+} as const;
+
+const journeyMarkerLabels = {
+  origin: "Transit origin",
+  pickup: "Pickup point",
+  transfer: "Transfer point",
+  dropoff: "Drop-off point",
+  destination: "Destination",
+} as const;
+
+function getJourneyMarkerColor(roles: Array<keyof typeof journeyMarkerLabels>) {
+  if (roles.includes("pickup")) {
+    return "#7e22ce";
+  }
+
+  if (roles.includes("transfer")) {
+    return "#b45309";
+  }
+
+  if (roles.includes("dropoff")) {
+    return "#be123c";
+  }
+
+  if (roles.includes("destination")) {
+    return "#047857";
+  }
+
+  return "#1d4ed8";
+}
+
+function removeSelectedJourneyLayers(map: maplibregl.Map) {
+  for (const layerId of Object.values(selectedJourneyLayerIds)) {
+    if (map.getLayer(layerId)) {
+      map.removeLayer(layerId);
+    }
+  }
+
+  for (const sourceId of Object.values(selectedJourneySourceIds)) {
+    if (map.getSource(sourceId)) {
+      map.removeSource(sourceId);
+    }
+  }
+}
 
 function isRenderableLocation(location: LocationOption) {
   return (
@@ -127,6 +178,9 @@ export function CommuteMap() {
     nearbyPickupCandidates,
     pickupJourneyMatches,
     pickupJourneySearchStatus,
+    selectedCurrentLocationJourneyMap,
+    selectedCurrentLocationJourneyOption,
+    selectedJourneyMapStatus,
     selectedPickupCandidate,
     selectPickupCandidate,
     supportedLocationsStatus,
@@ -135,7 +189,10 @@ export function CommuteMap() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const renderedLocationMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const selectedJourneyMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [status, setStatus] = useState<MapStatus>("loading");
+  const [selectedJourneyRenderFailed, setSelectedJourneyRenderFailed] =
+    useState(false);
   const renderableLocations = useMemo(
     () => activeSupportedLocations.filter(isRenderableLocation),
     [activeSupportedLocations],
@@ -283,6 +340,7 @@ export function CommuteMap() {
 
       currentLocationMarkerRef.current?.remove();
       currentLocationMarkerRef.current = null;
+      selectedJourneyMarkersRef.current = [];
       mapRef.current = null;
 
       if (loadingTimeout) {
@@ -461,9 +519,188 @@ export function CommuteMap() {
     }
   }, [currentPosition, nearbyPickupCandidates, status]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    let disposed = false;
+
+    for (const marker of selectedJourneyMarkersRef.current) {
+      marker.remove();
+    }
+
+    selectedJourneyMarkersRef.current = [];
+    queueMicrotask(() => {
+      if (!disposed) {
+        setSelectedJourneyRenderFailed(false);
+      }
+    });
+
+    if (!map || status !== "ready") {
+      return;
+    }
+
+    removeSelectedJourneyLayers(map);
+
+    if (!selectedCurrentLocationJourneyMap) {
+      return;
+    }
+
+    try {
+      const { initialWalkingPath, publishedMap, boundsCoordinates } =
+        selectedCurrentLocationJourneyMap;
+
+      map.addSource(selectedJourneySourceIds.initialWalking, {
+        type: "geojson",
+        data: initialWalkingPath,
+      });
+      map.addLayer({
+        id: selectedJourneyLayerIds.initialWalking,
+        type: "line",
+        source: selectedJourneySourceIds.initialWalking,
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#d97706",
+          "line-width": 5,
+          "line-opacity": 0.95,
+          "line-dasharray": [1, 2],
+        },
+      });
+
+      if (publishedMap.paths.features.length > 0) {
+        map.addSource(selectedJourneySourceIds.publishedPaths, {
+          type: "geojson",
+          data: publishedMap.paths,
+        });
+        map.addLayer({
+          id: selectedJourneyLayerIds.publishedTransit,
+          type: "line",
+          source: selectedJourneySourceIds.publishedPaths,
+          filter: ["==", ["get", "kind"], "transit"],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#2563eb",
+            "line-width": 6,
+            "line-opacity": 0.95,
+          },
+        });
+        map.addLayer({
+          id: selectedJourneyLayerIds.publishedWalking,
+          type: "line",
+          source: selectedJourneySourceIds.publishedPaths,
+          filter: ["==", ["get", "kind"], "walking"],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#475569",
+            "line-width": 4,
+            "line-opacity": 0.95,
+            "line-dasharray": [2, 2],
+          },
+        });
+      }
+
+      for (const feature of publishedMap.markers.features) {
+        const roles = feature.properties.roles;
+        const rolesLabel = roles
+          .map((role) => journeyMarkerLabels[role])
+          .join(", ");
+        const markerElement = document.createElement("button");
+
+        markerElement.type = "button";
+        markerElement.title = `${feature.properties.name}: ${rolesLabel}`;
+        markerElement.setAttribute(
+          "aria-label",
+          `Journey stop ${feature.properties.sequence}: ${feature.properties.name}: ${rolesLabel}`,
+        );
+        markerElement.textContent = String(feature.properties.sequence);
+        markerElement.style.width = "1.9rem";
+        markerElement.style.height = "1.9rem";
+        markerElement.style.borderRadius = "9999px";
+        markerElement.style.border = "3px solid white";
+        markerElement.style.backgroundColor = getJourneyMarkerColor(roles);
+        markerElement.style.boxShadow = "0 2px 8px rgb(15 23 42 / 40%)";
+        markerElement.style.color = "white";
+        markerElement.style.fontSize = "0.75rem";
+        markerElement.style.fontWeight = "700";
+        markerElement.style.lineHeight = "1";
+        markerElement.style.cursor = "pointer";
+
+        const popupContent = document.createElement("div");
+        const popupTitle = document.createElement("strong");
+        const popupRoles = document.createElement("span");
+
+        popupTitle.className = "block text-sm text-slate-950";
+        popupTitle.textContent = feature.properties.name;
+        popupRoles.className = "mt-1 block text-xs text-slate-600";
+        popupRoles.textContent = rolesLabel;
+        popupContent.append(popupTitle, popupRoles);
+
+        const marker = new maplibregl.Marker({
+          element: markerElement,
+          anchor: "center",
+        })
+          .setLngLat(feature.geometry.coordinates)
+          .setPopup(
+            new maplibregl.Popup({ offset: 20 }).setDOMContent(popupContent),
+          )
+          .addTo(map);
+
+        selectedJourneyMarkersRef.current.push(marker);
+      }
+
+      const [firstCoordinate, ...remainingCoordinates] = boundsCoordinates;
+
+      if (firstCoordinate) {
+        const bounds = new maplibregl.LngLatBounds(
+          firstCoordinate,
+          firstCoordinate,
+        );
+
+        for (const coordinate of remainingCoordinates) {
+          bounds.extend(coordinate);
+        }
+
+        map.fitBounds(bounds, {
+          padding: 72,
+          maxZoom: 15,
+          duration: 0,
+        });
+      }
+    } catch (error) {
+      console.error("Unable to render the selected journey on the map:", error);
+      queueMicrotask(() => {
+        if (!disposed) {
+          setSelectedJourneyRenderFailed(true);
+        }
+      });
+    }
+
+    return () => {
+      disposed = true;
+
+      for (const marker of selectedJourneyMarkersRef.current) {
+        marker.remove();
+      }
+
+      selectedJourneyMarkersRef.current = [];
+
+      if (mapRef.current === map) {
+        removeSelectedJourneyLayers(map);
+      }
+    };
+  }, [selectedCurrentLocationJourneyMap, status]);
+
   return (
     <div className="space-y-3">
       <div
+        id="commute-map"
         role="region"
         aria-label="Interactive commute map"
         className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-lg shadow-slate-900/5"
@@ -600,6 +837,29 @@ export function CommuteMap() {
           ? "Current location is displayed on the map. Your precise position is kept on this page and is not saved."
           : geolocationStatusMessages[geolocationStatus]}
       </p>
+
+      {selectedCurrentLocationJourneyOption ? (
+        <div
+          role={
+            selectedJourneyMapStatus === "error" || selectedJourneyRenderFailed
+              ? "alert"
+              : "status"
+          }
+          aria-live="polite"
+          className={`rounded-xl border p-3 text-sm leading-6 ${
+            selectedJourneyMapStatus === "error" || selectedJourneyRenderFailed
+              ? "border-amber-200 bg-amber-50 text-amber-950"
+              : "border-blue-200 bg-blue-50 text-blue-950"
+          }`}
+        >
+          {selectedJourneyMapStatus === "loading"
+            ? "Loading the selected verified journey map…"
+            : selectedJourneyMapStatus === "error" ||
+                selectedJourneyRenderFailed
+              ? "The selected journey route could not be displayed. Its text directions remain available."
+              : `Showing ${selectedCurrentLocationJourneyOption.publishedJourney.title}. The amber dotted line is an estimated initial walk; blue and gray paths come from verified journey data.`}
+        </div>
+      ) : null}
     </div>
   );
 }

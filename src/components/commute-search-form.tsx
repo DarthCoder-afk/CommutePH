@@ -115,6 +115,8 @@ export function CommuteSearchForm() {
     pickupSearchRadiusMeters,
     pickupSearchStatus,
     requestCurrentLocation,
+    selectCurrentLocationJourneyOption,
+    selectedCurrentLocationJourneyOption,
     selectedPickupCandidate,
     selectPickupCandidate,
     setPickupDestination,
@@ -169,6 +171,7 @@ export function CommuteSearchForm() {
 
       setJourneys([]);
       setCurrentLocationJourneyOptions([]);
+      selectCurrentLocationJourneyOption(null);
       setStatus("loading");
       setMessage(null);
 
@@ -241,7 +244,7 @@ export function CommuteSearchForm() {
         }
       }
     },
-    [],
+    [selectCurrentLocationJourneyOption],
   );
 
   useEffect(() => {
@@ -301,6 +304,7 @@ export function CommuteSearchForm() {
 
     setJourneys([]);
     setCurrentLocationJourneyOptions([]);
+    selectCurrentLocationJourneyOption(null);
     setStatus("idle");
     setMessage(null);
   }
@@ -363,6 +367,7 @@ export function CommuteSearchForm() {
     if (origin.type === "CURRENT_LOCATION") {
       setJourneys([]);
       setCurrentLocationJourneyOptions([]);
+      selectCurrentLocationJourneyOption(null);
       setStatus("notice");
 
       if (pickupSearchStatus === "loading") {
@@ -409,6 +414,7 @@ export function CommuteSearchForm() {
         }
 
         setCurrentLocationJourneyOptions(completeOptions);
+        selectCurrentLocationJourneyOption(completeOptions[0] ?? null);
         setStatus("success");
         setMessage(
           `${completeOptions.length} complete commute ${
@@ -566,6 +572,7 @@ export function CommuteSearchForm() {
                         disabled={isCheckingJourney}
                         onChange={() => {
                           selectPickupCandidate(candidate.location.id);
+                          selectCurrentLocationJourneyOption(null);
                         }}
                         className="mt-1 size-4 accent-emerald-700 disabled:cursor-wait"
                       />
@@ -703,6 +710,12 @@ export function CommuteSearchForm() {
                 isSelectedPickup={
                   selectedPickupCandidate?.location.id === option.pickup.id
                 }
+                isSelectedJourney={
+                  selectedCurrentLocationJourneyOption?.id === option.id
+                }
+                onSelect={() => {
+                  selectCurrentLocationJourneyOption(option);
+                }}
               />
             </li>
           ))}

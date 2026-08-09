@@ -35,6 +35,8 @@ const nearPickup = {
     name: "Near Pickup",
     city: "Test City",
     area: null,
+    longitude: 121,
+    latitude: 14.5,
   },
   distanceMeters: 400,
 };
@@ -46,6 +48,8 @@ const farPickup = {
     name: "Far Pickup",
     city: "Test City",
     area: "Test Area",
+    longitude: 121.01,
+    latitude: 14.51,
   },
   distanceMeters: 1_200,
 };

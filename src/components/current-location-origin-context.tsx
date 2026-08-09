@@ -21,6 +21,12 @@ import {
 import type { OriginSelection } from "@/lib/geolocation/origin-selection";
 import type { JourneySummary } from "@/lib/journeys/journey-summary";
 import {
+  buildCurrentLocationJourneyMapOverlay,
+  type CurrentLocationJourneyMapOverlay,
+  type PublishedJourneyMap,
+} from "@/lib/journeys/build-current-location-journey-map-overlay";
+import type { CurrentLocationJourneyOption } from "@/lib/journeys/build-current-location-journey-options";
+import {
   searchPickupJourneys,
   type PickupJourneyMatch,
 } from "@/lib/journeys/search-pickup-journeys";
@@ -51,11 +57,19 @@ type JourneySearchResponse = {
   data: JourneySummary[];
 };
 
+type JourneyDetailResponse = {
+  data: {
+    map: PublishedJourneyMap;
+  };
+};
+
 export type PickupSearchStatus =
   "idle" | "loading" | "ready" | "empty" | "error";
 
 export type PickupJourneySearchStatus =
   "idle" | "loading" | "ready" | "empty" | "error";
+
+export type SelectedJourneyMapStatus = "idle" | "loading" | "ready" | "error";
 
 type NearbyPickupCandidate = ReturnType<
   typeof findNearbyLocations<LocationOption>
@@ -84,6 +98,12 @@ type CurrentLocationOriginContextValue = {
     JourneySummary
   >[];
   pickupJourneySearchStatus: PickupJourneySearchStatus;
+  selectedCurrentLocationJourneyOption: CurrentLocationJourneyOption | null;
+  selectedCurrentLocationJourneyMap: CurrentLocationJourneyMapOverlay | null;
+  selectedJourneyMapStatus: SelectedJourneyMapStatus;
+  selectCurrentLocationJourneyOption: (
+    option: CurrentLocationJourneyOption | null,
+  ) => void;
 };
 
 const CurrentLocationOriginContext =
@@ -116,6 +136,12 @@ export function CurrentLocationOriginProvider({
   >([]);
   const [pickupJourneySearchStatus, setPickupJourneySearchStatus] =
     useState<PickupJourneySearchStatus>("idle");
+  const [selectedCurrentLocationJourneyOption, setSelectedJourneyOption] =
+    useState<CurrentLocationJourneyOption | null>(null);
+  const [selectedCurrentLocationJourneyMap, setSelectedJourneyMap] =
+    useState<CurrentLocationJourneyMapOverlay | null>(null);
+  const [selectedJourneyMapStatus, setSelectedJourneyMapStatus] =
+    useState<SelectedJourneyMapStatus>("idle");
 
   const requestDeviceLocation = useCallback((selectAsOrigin: boolean) => {
     if (!("geolocation" in navigator)) {
@@ -155,6 +181,9 @@ export function CurrentLocationOriginProvider({
         }));
 
         if (selectAsOrigin) {
+          setSelectedJourneyOption(null);
+          setSelectedJourneyMap(null);
+          setSelectedJourneyMapStatus("idle");
           setCurrentLocationOrigin((current) => ({
             origin: {
               type: "CURRENT_LOCATION",
@@ -188,6 +217,9 @@ export function CurrentLocationOriginProvider({
 
   const clearCurrentLocationOrigin = useCallback(() => {
     setCurrentLocationOrigin(null);
+    setSelectedJourneyOption(null);
+    setSelectedJourneyMap(null);
+    setSelectedJourneyMapStatus("idle");
   }, []);
 
   const locateOnMap = useCallback(() => {
@@ -251,9 +283,26 @@ export function CurrentLocationOriginProvider({
     setSelectedPickupLocationId(locationId);
   }, []);
 
+  const selectCurrentLocationJourneyOption = useCallback(
+    (option: CurrentLocationJourneyOption | null) => {
+      setSelectedJourneyOption(option);
+
+      if (option) {
+        setSelectedPickupLocationId(option.pickup.id);
+      } else {
+        setSelectedJourneyMap(null);
+        setSelectedJourneyMapStatus("idle");
+      }
+    },
+    [],
+  );
+
   const setPickupDestination = useCallback(
     (destination: LocationOption | null) => {
       setPickupDestinationState(destination);
+      setSelectedJourneyOption(null);
+      setSelectedJourneyMap(null);
+      setSelectedJourneyMapStatus("idle");
     },
     [],
   );
@@ -369,6 +418,65 @@ export function CurrentLocationOriginProvider({
   }, [nearbyPickupCandidates, pickupDestination, pickupSearchStatus]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    const loadSelectedJourneyMap = async () => {
+      if (!selectedCurrentLocationJourneyOption || !currentLocationOrigin) {
+        setSelectedJourneyMap(null);
+        setSelectedJourneyMapStatus("idle");
+        return;
+      }
+
+      setSelectedJourneyMap(null);
+      setSelectedJourneyMapStatus("loading");
+
+      try {
+        const response = await fetch(
+          `/api/journeys/${selectedCurrentLocationJourneyOption.publishedJourney.slug}`,
+          { signal: controller.signal },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Selected journey map loading failed with status ${response.status}.`,
+          );
+        }
+
+        const payload = (await response.json()) as JourneyDetailResponse;
+
+        if (!payload.data?.map) {
+          throw new Error(
+            "The selected journey endpoint returned an invalid map response.",
+          );
+        }
+
+        const overlay = buildCurrentLocationJourneyMapOverlay({
+          currentLocation: currentLocationOrigin.origin,
+          option: selectedCurrentLocationJourneyOption,
+          publishedMap: payload.data.map,
+        });
+
+        setSelectedJourneyMap(overlay);
+        setSelectedJourneyMapStatus("ready");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to load the selected journey map:", error);
+        setSelectedJourneyMap(null);
+        setSelectedJourneyMapStatus("error");
+      }
+    };
+
+    void loadSelectedJourneyMap();
+
+    return () => {
+      controller.abort();
+    };
+  }, [currentLocationOrigin, selectedCurrentLocationJourneyOption]);
+
+  useEffect(() => {
     return () => {
       geolocationRequestRef.current += 1;
     };
@@ -392,6 +500,10 @@ export function CurrentLocationOriginProvider({
       setPickupDestination,
       pickupJourneyMatches,
       pickupJourneySearchStatus,
+      selectedCurrentLocationJourneyOption,
+      selectedCurrentLocationJourneyMap,
+      selectedJourneyMapStatus,
+      selectCurrentLocationJourneyOption,
     }),
     [
       currentLocationOrigin,
@@ -408,6 +520,10 @@ export function CurrentLocationOriginProvider({
       setPickupDestination,
       pickupJourneyMatches,
       pickupJourneySearchStatus,
+      selectedCurrentLocationJourneyOption,
+      selectedCurrentLocationJourneyMap,
+      selectedJourneyMapStatus,
+      selectCurrentLocationJourneyOption,
     ],
   );
 

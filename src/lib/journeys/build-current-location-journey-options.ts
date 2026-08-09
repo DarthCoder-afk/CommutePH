@@ -10,6 +10,8 @@ type JourneyPickupCandidate = {
     name: string;
     city: string;
     area: string | null;
+    longitude: number;
+    latitude: number;
   };
   distanceMeters: number;
 };

@@ -14,6 +14,8 @@ import type { CurrentLocationJourneyOption } from "@/lib/journeys/build-current-
 type CurrentLocationJourneyOptionCardProps = {
   option: CurrentLocationJourneyOption;
   isSelectedPickup: boolean;
+  isSelectedJourney: boolean;
+  onSelect: () => void;
 };
 
 function formatDuration(minMinutes: number, maxMinutes: number) {
@@ -45,13 +47,17 @@ function formatFare(
 export function CurrentLocationJourneyOptionCard({
   option,
   isSelectedPickup,
+  isSelectedJourney,
+  onSelect,
 }: CurrentLocationJourneyOptionCardProps) {
   return (
     <article
       className={`rounded-2xl border bg-white p-5 shadow-sm ${
-        option.isRecommended
-          ? "border-blue-300 ring-2 ring-blue-100"
-          : "border-slate-200"
+        isSelectedJourney
+          ? "border-blue-500 ring-2 ring-blue-200"
+          : option.isRecommended
+            ? "border-blue-300 ring-2 ring-blue-100"
+            : "border-slate-200"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -156,13 +162,25 @@ export function CurrentLocationJourneyOptionCard({
         published journey is not included in the distance total yet.
       </p>
 
-      <Link
-        href={`/journeys/${option.publishedJourney.slug}`}
-        className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white transition hover:bg-blue-800 focus:ring-4 focus:ring-blue-200 focus:outline-none"
-      >
-        View verified transit directions
-        <ArrowRight aria-hidden="true" className="size-4" />
-      </Link>
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+        <button
+          type="button"
+          aria-pressed={isSelectedJourney}
+          aria-controls="commute-map"
+          onClick={onSelect}
+          className="inline-flex items-center justify-center rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white transition hover:bg-blue-800 focus:ring-4 focus:ring-blue-200 focus:outline-none"
+        >
+          {isSelectedJourney ? "Selected for map" : "Show this option on map"}
+        </button>
+
+        <Link
+          href={`/journeys/${option.publishedJourney.slug}`}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-3 font-semibold text-blue-800 transition hover:bg-blue-50 focus:ring-4 focus:ring-blue-100 focus:outline-none"
+        >
+          View transit directions
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </Link>
+      </div>
     </article>
   );
 }
