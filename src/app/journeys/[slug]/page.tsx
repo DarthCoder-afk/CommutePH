@@ -31,7 +31,11 @@ export default async function JourneyPage({ params }: JourneyPageProps) {
   }
 
   return (
-    <main className="flex-1 bg-slate-50 px-4 py-12 text-slate-950">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex-1 scroll-mt-20 bg-slate-50 px-4 py-12 text-slate-950 outline-none"
+    >
       <div className="mx-auto max-w-3xl">
         <Link
           href="/"

@@ -137,11 +137,11 @@ function createCurrentLocationMarkerElement() {
   marker.title = "Your current location";
   marker.setAttribute("aria-label", "Your current location");
   marker.className =
-    "relative flex size-8 cursor-pointer items-center justify-center rounded-full focus:ring-4 focus:ring-sky-300 focus:outline-none";
+    "relative flex size-10 cursor-pointer items-center justify-center rounded-full focus:ring-4 focus:ring-sky-300 focus:outline-none";
 
   pulse.setAttribute("aria-hidden", "true");
   pulse.className =
-    "pointer-events-none absolute size-8 animate-ping rounded-full bg-sky-500/35";
+    "pointer-events-none absolute size-10 animate-ping rounded-full bg-sky-500/35";
 
   dot.setAttribute("aria-hidden", "true");
   dot.className =
@@ -401,12 +401,12 @@ export function CommuteMap() {
       }
 
       markerElement.className = isSelectedPickup
-        ? "size-9 cursor-pointer rounded-full border-[3px] border-white bg-emerald-700 shadow-lg ring-4 ring-emerald-400/40 transition-colors hover:bg-emerald-900 focus:ring-4 focus:ring-emerald-300 focus:outline-none"
+        ? "size-11 cursor-pointer rounded-full border-[3px] border-white bg-emerald-700 shadow-lg ring-4 ring-emerald-400/40 transition-colors hover:bg-emerald-900 focus:ring-4 focus:ring-emerald-300 focus:outline-none"
         : pickupCandidate && journeyUnavailable
-          ? "size-8 cursor-default rounded-full border-[3px] border-white bg-slate-400 shadow-lg ring-4 ring-slate-300/40 focus:ring-4 focus:ring-slate-300 focus:outline-none"
+          ? "size-10 cursor-default rounded-full border-[3px] border-white bg-slate-400 shadow-lg ring-4 ring-slate-300/40 focus:ring-4 focus:ring-slate-300 focus:outline-none"
           : pickupCandidate
-            ? "size-8 cursor-pointer rounded-full border-[3px] border-white bg-amber-500 shadow-lg ring-4 ring-amber-400/35 transition-colors hover:bg-amber-700 focus:ring-4 focus:ring-amber-300 focus:outline-none"
-            : "size-7 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
+            ? "size-10 cursor-pointer rounded-full border-[3px] border-white bg-amber-500 shadow-lg ring-4 ring-amber-400/35 transition-colors hover:bg-amber-700 focus:ring-4 focus:ring-amber-300 focus:outline-none"
+            : "size-10 cursor-pointer rounded-full border-[3px] border-white bg-blue-700 shadow-lg ring-2 ring-blue-700/25 transition-colors hover:bg-blue-900 focus:ring-4 focus:ring-blue-300 focus:outline-none";
 
       if (pickupCandidate && !journeyUnavailable) {
         markerElement.addEventListener("click", () => {
@@ -620,8 +620,8 @@ export function CommuteMap() {
           `Journey stop ${feature.properties.sequence}: ${feature.properties.name}: ${rolesLabel}`,
         );
         markerElement.textContent = String(feature.properties.sequence);
-        markerElement.style.width = "1.9rem";
-        markerElement.style.height = "1.9rem";
+        markerElement.style.width = "2.5rem";
+        markerElement.style.height = "2.5rem";
         markerElement.style.borderRadius = "9999px";
         markerElement.style.border = "3px solid white";
         markerElement.style.backgroundColor = getJourneyMarkerColor(roles);
@@ -837,6 +837,66 @@ export function CommuteMap() {
           ? "Current location is displayed on the map. Your precise position is kept on this page and is not saved."
           : geolocationStatusMessages[geolocationStatus]}
       </p>
+
+      {locationStatus === "ready" ? (
+        <details className="rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer font-semibold text-slate-800 focus:outline-none">
+            Locations shown on the map
+          </summary>
+
+          <ul className="mt-3 space-y-3">
+            {renderableLocations.map((location) => {
+              const pickupCandidate = nearbyPickupByLocationId.get(location.id);
+              const pickupJourneyMatch = pickupJourneyMatchByLocationId.get(
+                location.id,
+              );
+              const journeyUnavailable =
+                Boolean(pickupCandidate) &&
+                (pickupJourneySearchStatus === "empty" ||
+                  (pickupJourneySearchStatus === "ready" &&
+                    !pickupJourneyMatch));
+              const isSelectedPickup =
+                selectedPickupCandidate?.location.id === location.id;
+
+              return (
+                <li
+                  key={location.id}
+                  className="flex flex-col gap-1 border-t border-slate-100 pt-3 first:border-0 first:pt-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                >
+                  <span>
+                    <span className="block font-semibold text-slate-950">
+                      {location.name}
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      {[location.area, location.city]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </span>
+                  </span>
+
+                  <span className="text-sm font-medium text-slate-600 sm:text-right">
+                    {isSelectedPickup
+                      ? "Selected pickup point"
+                      : journeyUnavailable
+                        ? "No verified journey to the destination"
+                        : pickupJourneyMatch
+                          ? `${pickupJourneyMatch.journeys.length} verified ${
+                              pickupJourneyMatch.journeys.length === 1
+                                ? "journey"
+                                : "journeys"
+                            } to the destination`
+                          : pickupCandidate
+                            ? `Nearby pickup · ${formatApproximateDistance(
+                                pickupCandidate.distanceMeters,
+                              )}`
+                            : "Supported location"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ) : null}
 
       {selectedCurrentLocationJourneyOption ? (
         <div

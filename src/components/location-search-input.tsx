@@ -156,7 +156,44 @@ export function LocationSearchInput({
       return;
     }
 
+    if (!isOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      if (
+        actionOption ||
+        (query.trim().length >= 2 && status !== "idle")
+      ) {
+        event.preventDefault();
+        setIsOpen(true);
+        setActiveIndex(
+          actionOption
+            ? actionOptionIndex
+            : event.key === "ArrowUp"
+              ? options.length - 1
+              : 0,
+        );
+      }
+
+      return;
+    }
+
     if (!isOpen) {
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      setActiveIndex(hasActionOption ? actionOptionIndex : 0);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      setActiveIndex(
+        options.length > 0
+          ? options.length - 1
+          : hasActionOption
+            ? actionOptionIndex
+            : -1,
+      );
       return;
     }
 
@@ -235,6 +272,7 @@ export function LocationSearchInput({
         maxLength={80}
         autoComplete="off"
         role="combobox"
+        aria-haspopup="listbox"
         aria-autocomplete="list"
         aria-expanded={isOpen}
         aria-controls={listboxId}

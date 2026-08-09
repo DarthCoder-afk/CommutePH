@@ -21,7 +21,11 @@ const benefits = [
 export default function Home() {
   return (
     <CurrentLocationOriginProvider>
-      <main className="relative isolate flex-1 overflow-hidden px-4 py-12 sm:px-6 sm:py-20">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="relative isolate flex-1 scroll-mt-20 overflow-hidden px-4 py-12 outline-none sm:px-6 sm:py-20"
+      >
         <div
           aria-hidden="true"
           className="absolute top-0 left-1/2 -z-10 size-96 -translate-x-1/2 rounded-full bg-blue-100/70 blur-3xl"

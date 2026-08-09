@@ -132,6 +132,8 @@ export function CommuteSearchForm() {
   const [message, setMessage] = useState<string | null>(null);
 
   const activeRequest = useRef<AbortController | null>(null);
+  const resultsRegionRef = useRef<HTMLDivElement | null>(null);
+  const shouldFocusResultsRef = useRef(false);
   const pickupJourneyMatchesByLocationId = useMemo(
     () =>
       new Map(
@@ -296,6 +298,26 @@ export function CommuteSearchForm() {
     };
   }, [currentLocationOrigin]);
 
+  useEffect(() => {
+    if (
+      !shouldFocusResultsRef.current ||
+      status === "idle" ||
+      status === "loading"
+    ) {
+      return;
+    }
+
+    shouldFocusResultsRef.current = false;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      resultsRegionRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+    };
+  }, [status]);
+
   function resetResults() {
     activeRequest.current?.abort();
     activeRequest.current = null;
@@ -356,6 +378,7 @@ export function CommuteSearchForm() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    shouldFocusResultsRef.current = true;
 
     if (!origin || !destination) {
       setJourneys([]);
@@ -636,7 +659,7 @@ export function CommuteSearchForm() {
             }
             disabled={origin?.type === "CURRENT_LOCATION"}
             onClick={handleSwapLocations}
-            className="flex size-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:ring-4 focus:ring-blue-100 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+            className="flex size-11 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:ring-4 focus:ring-blue-100 focus:outline-none disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
           >
             <ArrowUpDown aria-hidden="true" className="size-5" />
           </button>
@@ -664,73 +687,88 @@ export function CommuteSearchForm() {
         {status === "loading" ? "Finding journeys…" : "Find a commute"}
       </button>
 
-      {message ? (
-        <div
-          role={status === "error" ? "alert" : "status"}
-          aria-live="polite"
-          className={`rounded-xl border p-4 text-sm ${
-            status === "error"
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-blue-200 bg-blue-50 text-blue-900"
-          }`}
-        >
-          {message}
-        </div>
-      ) : null}
+      <div
+        ref={resultsRegionRef}
+        role="region"
+        aria-labelledby="search-results-heading"
+        tabIndex={-1}
+        className="space-y-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:outline-none"
+      >
+        <h3 id="search-results-heading" className="sr-only">
+          Commute search results
+        </h3>
 
-      {status === "success" &&
-      journeys.length === 0 &&
-      currentLocationJourneyOptions.length === 0 ? (
-        <section
-          role="status"
-          aria-live="polite"
-          className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center"
-        >
-          <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-slate-200 text-slate-600">
-            <SearchX aria-hidden="true" className="size-6" />
-          </span>
+        {message ? (
+          <div
+            role={status === "error" ? "alert" : "status"}
+            aria-live="polite"
+            className={`rounded-xl border p-4 text-sm ${
+              status === "error"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-blue-200 bg-blue-50 text-blue-900"
+            }`}
+          >
+            {message}
+          </div>
+        ) : null}
 
-          <h3 className="mt-4 font-bold text-slate-950">
-            No verified journey yet
-          </h3>
+        {status === "success" &&
+        journeys.length === 0 &&
+        currentLocationJourneyOptions.length === 0 ? (
+          <section
+            role="status"
+            aria-live="polite"
+            className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center"
+          >
+            <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+              <SearchX aria-hidden="true" className="size-6" />
+            </span>
 
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
-            This route may still be awaiting review or field verification. Try
-            another pair of active locations.
-          </p>
-        </section>
-      ) : null}
+            <h4 className="mt-4 font-bold text-slate-950">
+              No verified journey yet
+            </h4>
 
-      {status === "success" && currentLocationJourneyOptions.length > 0 ? (
-        <ol aria-label="Ranked complete commute options" className="space-y-4">
-          {currentLocationJourneyOptions.map((option) => (
-            <li key={option.id}>
-              <CurrentLocationJourneyOptionCard
-                option={option}
-                isSelectedPickup={
-                  selectedPickupCandidate?.location.id === option.pickup.id
-                }
-                isSelectedJourney={
-                  selectedCurrentLocationJourneyOption?.id === option.id
-                }
-                onSelect={() => {
-                  selectCurrentLocationJourneyOption(option);
-                }}
-              />
-            </li>
-          ))}
-        </ol>
-      ) : null}
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
+              This route may still be awaiting review or field verification.
+              Try another pair of active locations.
+            </p>
+          </section>
+        ) : null}
 
-      {status === "success" && journeys.length > 0 ? (
-        <ul aria-label="Journey results" className="space-y-4">
-          {journeys.map((journey) => (
-            <li key={journey.id}>
-              <JourneySummaryCard journey={journey} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
+        {status === "success" && currentLocationJourneyOptions.length > 0 ? (
+          <ol
+            aria-label="Ranked complete commute options"
+            className="space-y-4"
+          >
+            {currentLocationJourneyOptions.map((option) => (
+              <li key={option.id}>
+                <CurrentLocationJourneyOptionCard
+                  option={option}
+                  isSelectedPickup={
+                    selectedPickupCandidate?.location.id === option.pickup.id
+                  }
+                  isSelectedJourney={
+                    selectedCurrentLocationJourneyOption?.id === option.id
+                  }
+                  onSelect={() => {
+                    selectCurrentLocationJourneyOption(option);
+                  }}
+                />
+              </li>
+            ))}
+          </ol>
+        ) : null}
+
+        {status === "success" && journeys.length > 0 ? (
+          <ul aria-label="Journey results" className="space-y-4">
+            {journeys.map((journey) => (
+              <li key={journey.id}>
+                <JourneySummaryCard journey={journey} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </form>
   );
 }
