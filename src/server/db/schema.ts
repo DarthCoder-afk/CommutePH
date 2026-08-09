@@ -406,6 +406,16 @@ export const journeyStatusEnum = pgEnum("journey_status", [
   "outdated",
 ]);
 
+export const journeyFieldObservationOutcomeEnum = pgEnum(
+  "journey_field_observation_outcome",
+  ["confirmed", "not_found", "needs_follow_up"],
+);
+
+export const journeyVerificationDecisionEnum = pgEnum(
+  "journey_verification_decision",
+  ["approved", "rejected", "needs_follow_up"],
+);
+
 export const journeys = pgTable(
   "journeys",
   {
@@ -1266,6 +1276,273 @@ export const journeySegments = pgTable(
   ],
 );
 
+export const journeyFieldObservations = pgTable(
+  "journey_field_observations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyId: uuid("journey_id")
+      .notNull()
+      .references(() => journeys.id, { onDelete: "restrict" }),
+
+    outcome: journeyFieldObservationOutcomeEnum("outcome").notNull(),
+
+    observedAt: timestamp("observed_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+
+    observerLabel: varchar("observer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    actualDurationMinutes: integer("actual_duration_minutes"),
+
+    actualFareCentavos: integer("actual_fare_centavos"),
+
+    actualTransferCount: integer("actual_transfer_count"),
+
+    evidenceUrl: text("evidence_url"),
+
+    finalizedAt: timestamp("finalized_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("journey_field_observations_journey_observed_idx").on(
+      table.journeyId,
+      table.observedAt,
+    ),
+
+    uniqueIndex("journey_field_observations_submission_uidx").on(
+      table.journeyId,
+      table.observedAt,
+      table.observerLabel,
+    ),
+
+    check(
+      "journey_field_observations_observer_valid",
+      sql`length(btrim(${table.observerLabel})) >= 2`,
+    ),
+
+    check(
+      "journey_field_observations_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+
+    check(
+      "journey_field_observations_time_valid",
+      sql`${table.observedAt} <= ${table.createdAt}`,
+    ),
+
+    check(
+      "journey_field_observations_totals_valid",
+      sql`
+        (
+          ${table.actualDurationMinutes} IS NULL
+          AND ${table.actualFareCentavos} IS NULL
+          AND ${table.actualTransferCount} IS NULL
+        )
+        OR
+        (
+          ${table.actualDurationMinutes} IS NOT NULL
+          AND ${table.actualDurationMinutes} >= 1
+          AND ${table.actualFareCentavos} IS NOT NULL
+          AND ${table.actualFareCentavos} >= 0
+          AND ${table.actualTransferCount} IS NOT NULL
+          AND ${table.actualTransferCount} >= 0
+        )
+      `,
+    ),
+
+    check(
+      "journey_field_observations_confirmed_totals_valid",
+      sql`
+        ${table.outcome} <> 'confirmed'
+        OR
+        (
+          ${table.actualDurationMinutes} IS NOT NULL
+          AND ${table.actualFareCentavos} IS NOT NULL
+          AND ${table.actualTransferCount} IS NOT NULL
+        )
+      `,
+    ),
+  ],
+);
+
+export const journeyFieldObservationSegments = pgTable(
+  "journey_field_observation_segments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyFieldObservationId: uuid("journey_field_observation_id")
+      .notNull()
+      .references(() => journeyFieldObservations.id, { onDelete: "restrict" }),
+
+    journeySegmentId: uuid("journey_segment_id")
+      .notNull()
+      .references(() => journeySegments.id, { onDelete: "restrict" }),
+
+    position: integer("position").notNull(),
+
+    kind: journeySegmentKindEnum("kind").notNull(),
+
+    observedTransportRouteId: uuid("observed_transport_route_id").references(
+      () => transportRoutes.id,
+      { onDelete: "restrict" },
+    ),
+
+    actualDurationMinutes: integer("actual_duration_minutes").notNull(),
+
+    actualFareCentavos: integer("actual_fare_centavos"),
+
+    pathGeometry: postgisLineString("path_geometry"),
+
+    notes: text("notes"),
+  },
+  (table) => [
+    uniqueIndex("journey_field_observation_segments_position_uidx").on(
+      table.journeyFieldObservationId,
+      table.position,
+    ),
+
+    uniqueIndex("journey_field_observation_segments_segment_uidx").on(
+      table.journeyFieldObservationId,
+      table.journeySegmentId,
+    ),
+
+    check(
+      "journey_field_observation_segments_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+
+    check(
+      "journey_field_observation_segments_duration_positive",
+      sql`${table.actualDurationMinutes} >= 1`,
+    ),
+
+    check(
+      "journey_field_observation_segments_shape_valid",
+      sql`
+        (
+          ${table.kind} = 'walking'
+          AND ${table.observedTransportRouteId} IS NULL
+          AND ${table.actualFareCentavos} IS NULL
+        )
+        OR
+        (
+          ${table.kind} = 'transit'
+          AND ${table.observedTransportRouteId} IS NOT NULL
+          AND ${table.actualFareCentavos} IS NOT NULL
+          AND ${table.actualFareCentavos} >= 0
+        )
+      `,
+    ),
+
+    check(
+      "journey_field_observation_segments_path_valid",
+      sql`
+        ${table.pathGeometry} IS NULL
+        OR
+        (
+          NOT ST_IsEmpty(${table.pathGeometry})
+          AND ST_CoveredBy(
+            ${table.pathGeometry},
+            ST_MakeEnvelope(-180, -90, 180, 90, 4326)
+          )
+        )
+      `,
+    ),
+
+    check(
+      "journey_field_observation_segments_notes_valid",
+      sql`${table.notes} IS NULL OR length(btrim(${table.notes})) > 0`,
+    ),
+  ],
+);
+
+export const journeyFieldObservationSteps = pgTable(
+  "journey_field_observation_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyFieldObservationSegmentId: uuid(
+      "journey_field_observation_segment_id",
+    )
+      .notNull()
+      .references(() => journeyFieldObservationSegments.id, {
+        onDelete: "restrict",
+      }),
+
+    position: integer("position").notNull(),
+
+    instruction: text("instruction").notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_field_observation_steps_position_uidx").on(
+      table.journeyFieldObservationSegmentId,
+      table.position,
+    ),
+
+    check(
+      "journey_field_observation_steps_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+
+    check(
+      "journey_field_observation_steps_instruction_valid",
+      sql`length(btrim(${table.instruction})) > 0`,
+    ),
+  ],
+);
+
+export const journeyVerificationDecisions = pgTable(
+  "journey_verification_decisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyFieldObservationId: uuid("journey_field_observation_id")
+      .notNull()
+      .references(() => journeyFieldObservations.id, { onDelete: "restrict" }),
+
+    decision: journeyVerificationDecisionEnum("decision").notNull(),
+
+    reviewerLabel: varchar("reviewer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    decidedAt: timestamp("decided_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_verification_decisions_observation_uidx").on(
+      table.journeyFieldObservationId,
+    ),
+
+    check(
+      "journey_verification_decisions_reviewer_valid",
+      sql`length(btrim(${table.reviewerLabel})) >= 2`,
+    ),
+
+    check(
+      "journey_verification_decisions_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+  ],
+);
+
 export const journeySteps = pgTable(
   "journey_steps",
   {
@@ -1310,6 +1587,26 @@ export type NewJourneyStep = typeof journeySteps.$inferInsert;
 
 export type JourneySegment = typeof journeySegments.$inferSelect;
 export type NewJourneySegment = typeof journeySegments.$inferInsert;
+
+export type JourneyFieldObservation =
+  typeof journeyFieldObservations.$inferSelect;
+export type NewJourneyFieldObservation =
+  typeof journeyFieldObservations.$inferInsert;
+
+export type JourneyFieldObservationSegment =
+  typeof journeyFieldObservationSegments.$inferSelect;
+export type NewJourneyFieldObservationSegment =
+  typeof journeyFieldObservationSegments.$inferInsert;
+
+export type JourneyFieldObservationStep =
+  typeof journeyFieldObservationSteps.$inferSelect;
+export type NewJourneyFieldObservationStep =
+  typeof journeyFieldObservationSteps.$inferInsert;
+
+export type JourneyVerificationDecision =
+  typeof journeyVerificationDecisions.$inferSelect;
+export type NewJourneyVerificationDecision =
+  typeof journeyVerificationDecisions.$inferInsert;
 
 export type TransportRouteStop = typeof transportRouteStops.$inferSelect;
 export type NewTransportRouteStop = typeof transportRouteStops.$inferInsert;

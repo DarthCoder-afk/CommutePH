@@ -127,6 +127,20 @@
       "when": 1786253555942,
       "tag": "0017_familiar_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786254998477,
+      "tag": "0018_sad_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786255606783,
+      "tag": "0019_elite_tiger_shark",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,13 @@
 import "dotenv/config";
 
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import {
   journeySegments,
+  journeyFieldObservations,
+  journeyVerificationDecisions,
   journeySources,
   journeySteps,
   journeys,
@@ -90,6 +92,33 @@ async function main() {
 
     if (!journey) {
       throw new Error(`Journey "${journeySlug}" was not found.`);
+    }
+
+    const [approvedFieldTest] = journey.lastVerifiedAt
+      ? await db
+          .select({ id: journeyVerificationDecisions.id })
+          .from(journeyVerificationDecisions)
+          .innerJoin(
+            journeyFieldObservations,
+            eq(
+              journeyVerificationDecisions.journeyFieldObservationId,
+              journeyFieldObservations.id,
+            ),
+          )
+          .where(
+            and(
+              eq(journeyFieldObservations.journeyId, journey.id),
+              eq(journeyFieldObservations.observedAt, journey.lastVerifiedAt),
+              eq(journeyVerificationDecisions.decision, "approved"),
+            ),
+          )
+          .limit(1)
+      : [];
+
+    if (!approvedFieldTest) {
+      addBlocker(
+        "The journey needs an approved field test matching its verification date.",
+      );
     }
 
     if (
