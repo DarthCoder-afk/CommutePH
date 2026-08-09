@@ -51,6 +51,16 @@ export const locationSourceTypeEnum = pgEnum("location_source_type", [
   "development_fixture",
 ]);
 
+export const locationDuplicateReviewStatusEnum = pgEnum(
+  "location_duplicate_review_status",
+  ["pending", "distinct", "duplicate", "needs_field_check"],
+);
+
+export const locationDuplicateDetectionReasonEnum = pgEnum(
+  "location_duplicate_detection_reason",
+  ["same_normalized_name", "very_close_proximity"],
+);
+
 export const locations = pgTable(
   "locations",
   {
@@ -134,6 +144,94 @@ export const locations = pgTable(
       sql`
         ${table.sourceType} NOT IN ('openstreetmap', 'gtfs')
         OR ${table.sourceExternalId} IS NOT NULL
+      `,
+    ),
+  ],
+);
+
+export const locationDuplicateReviews = pgTable(
+  "location_duplicate_reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    firstLocationId: uuid("first_location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    secondLocationId: uuid("second_location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    status: locationDuplicateReviewStatusEnum("status")
+      .default("pending")
+      .notNull(),
+
+    detectionReason:
+      locationDuplicateDetectionReasonEnum("detection_reason").notNull(),
+
+    detectedDistanceMeters: integer("detected_distance_meters").notNull(),
+
+    reviewerNotes: text("reviewer_notes"),
+
+    reviewedAt: timestamp("reviewed_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    lastDetectedAt: timestamp("last_detected_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("location_duplicate_reviews_pair_uidx").on(
+      table.firstLocationId,
+      table.secondLocationId,
+    ),
+
+    index("location_duplicate_reviews_status_idx").on(table.status),
+
+    check(
+      "location_duplicate_reviews_canonical_pair",
+      sql`${table.firstLocationId}::text < ${table.secondLocationId}::text`,
+    ),
+
+    check(
+      "location_duplicate_reviews_distance_nonnegative",
+      sql`${table.detectedDistanceMeters} >= 0`,
+    ),
+
+    check(
+      "location_duplicate_reviews_decision_metadata_valid",
+      sql`
+        (
+          ${table.status} = 'pending'
+          AND ${table.reviewerNotes} IS NULL
+          AND ${table.reviewedAt} IS NULL
+        )
+        OR
+        (
+          ${table.status} <> 'pending'
+          AND ${table.reviewerNotes} IS NOT NULL
+          AND length(btrim(${table.reviewerNotes})) >= 10
+          AND ${table.reviewedAt} IS NOT NULL
+        )
       `,
     ),
   ],
@@ -818,6 +916,11 @@ export type NewJourney = typeof journeys.$inferInsert;
 
 export type Location = typeof locations.$inferSelect;
 export type NewLocation = typeof locations.$inferInsert;
+
+export type LocationDuplicateReview =
+  typeof locationDuplicateReviews.$inferSelect;
+export type NewLocationDuplicateReview =
+  typeof locationDuplicateReviews.$inferInsert;
 
 export type JourneySource = typeof journeySources.$inferSelect;
 export type NewJourneySource = typeof journeySources.$inferInsert;
