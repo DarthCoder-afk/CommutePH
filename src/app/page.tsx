@@ -76,7 +76,7 @@ export default function Home() {
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Choose a verified starting point and destination.
+              Search Metro Manila places or choose a supported commute point.
             </p>
 
             <div className="mt-6">
@@ -100,8 +100,8 @@ export default function Home() {
             </h2>
 
             <p className="mt-3 leading-7 text-slate-600">
-              Search uses curated CommuteMap PH locations. Journey markers and
-              paths appear only when matching guidance is available.
+              General places can be explored on the map. Verified journey
+              markers and paths appear only for supported commute points.
             </p>
           </div>
 

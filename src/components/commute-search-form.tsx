@@ -16,6 +16,8 @@ import { JourneySummaryCard } from "@/components/journey-summary-card";
 import {
   LocationSearchInput,
   type LocationOption,
+  type PlaceSearchOption,
+  type SearchLocationOption,
 } from "@/components/location-search-input";
 import {
   geolocationStatusMessages,
@@ -28,6 +30,10 @@ import {
   type CurrentLocationJourneyOption,
 } from "@/lib/journeys/build-current-location-journey-options";
 import type { JourneySummary } from "@/lib/journeys/journey-summary";
+import {
+  isPlaceSearchOption,
+  isSupportedLocationOption,
+} from "@/lib/locations/search-location-option";
 
 type JourneySearchSuccess = {
   data: JourneySummary[];
@@ -54,6 +60,13 @@ type PersistedSearch = {
   origin: LocationOption;
   destination: LocationOption;
 };
+
+type SearchOriginSelection =
+  | OriginSelection
+  | {
+      type: "SEARCHED_PLACE";
+      place: PlaceSearchOption;
+    };
 
 function isLocationOption(value: unknown): value is LocationOption {
   if (!value || typeof value !== "object") {
@@ -119,10 +132,14 @@ export function CommuteSearchForm() {
     selectedCurrentLocationJourneyOption,
     selectedPickupCandidate,
     selectPickupCandidate,
+    setSelectedDestinationPlace,
+    setSelectedOriginPlace,
     setPickupDestination,
   } = useCurrentLocationOrigin();
-  const [origin, setOrigin] = useState<OriginSelection | null>(null);
-  const [destination, setDestination] = useState<LocationOption | null>(null);
+  const [origin, setOrigin] = useState<SearchOriginSelection | null>(null);
+  const [destination, setDestination] = useState<SearchLocationOption | null>(
+    null,
+  );
   const [originQuery, setOriginQuery] = useState("");
   const [destinationQuery, setDestinationQuery] = useState("");
   const [journeys, setJourneys] = useState<JourneySummary[]>([]);
@@ -145,7 +162,11 @@ export function CommuteSearchForm() {
     [pickupJourneyMatches],
   );
   const displayedPickupCandidates = useMemo(() => {
-    if (!destination || pickupJourneySearchStatus === "loading") {
+    if (
+      !destination ||
+      isPlaceSearchOption(destination) ||
+      pickupJourneySearchStatus === "loading"
+    ) {
       return nearbyPickupCandidates;
     }
 
@@ -262,6 +283,8 @@ export function CommuteSearchForm() {
         location: persistedSearch.origin,
       });
       setDestination(persistedSearch.destination);
+      setSelectedOriginPlace(null);
+      setSelectedDestinationPlace(null);
       setPickupDestination(persistedSearch.destination);
       setOriginQuery(persistedSearch.origin.name);
       setDestinationQuery(persistedSearch.destination.name);
@@ -273,7 +296,12 @@ export function CommuteSearchForm() {
       window.clearTimeout(restoreTimeout);
       activeRequest.current?.abort();
     };
-  }, [searchJourneys, setPickupDestination]);
+  }, [
+    searchJourneys,
+    setPickupDestination,
+    setSelectedDestinationPlace,
+    setSelectedOriginPlace,
+  ]);
 
   useEffect(() => {
     if (!currentLocationOrigin) {
@@ -286,6 +314,7 @@ export function CommuteSearchForm() {
 
     const applySuggestionTimeout = window.setTimeout(() => {
       setOrigin(currentLocationOrigin.origin);
+      setSelectedOriginPlace(null);
       setOriginQuery("Current location");
       setJourneys([]);
       setCurrentLocationJourneyOptions([]);
@@ -296,7 +325,7 @@ export function CommuteSearchForm() {
     return () => {
       window.clearTimeout(applySuggestionTimeout);
     };
-  }, [currentLocationOrigin]);
+  }, [currentLocationOrigin, setSelectedOriginPlace]);
 
   useEffect(() => {
     if (
@@ -331,22 +360,35 @@ export function CommuteSearchForm() {
     setMessage(null);
   }
 
-  function handleOriginChange(location: LocationOption | null) {
+  function handleOriginChange(location: SearchLocationOption | null) {
     clearCurrentLocationOrigin();
+    setSelectedOriginPlace(
+      location && isPlaceSearchOption(location) ? location : null,
+    );
     setOrigin(
       location
-        ? {
-            type: "CURATED_LOCATION",
-            location,
-          }
+        ? isPlaceSearchOption(location)
+          ? {
+              type: "SEARCHED_PLACE",
+              place: location,
+            }
+          : {
+              type: "CURATED_LOCATION",
+              location,
+            }
         : null,
     );
     resetResults();
   }
 
-  function handleDestinationChange(location: LocationOption | null) {
+  function handleDestinationChange(location: SearchLocationOption | null) {
     setDestination(location);
-    setPickupDestination(location);
+    setSelectedDestinationPlace(
+      location && isPlaceSearchOption(location) ? location : null,
+    );
+    setPickupDestination(
+      location && isSupportedLocationOption(location) ? location : null,
+    );
     resetResults();
   }
 
@@ -355,21 +397,39 @@ export function CommuteSearchForm() {
       return;
     }
 
-    const previousOrigin = origin?.location ?? null;
+    const previousOrigin =
+      origin?.type === "CURATED_LOCATION"
+        ? origin.location
+        : origin?.type === "SEARCHED_PLACE"
+          ? origin.place
+          : null;
     const previousDestination = destination;
     const previousOriginQuery = originQuery;
     const previousDestinationQuery = destinationQuery;
 
     setOrigin(
       previousDestination
-        ? {
-            type: "CURATED_LOCATION",
-            location: previousDestination,
-          }
+        ? isPlaceSearchOption(previousDestination)
+          ? { type: "SEARCHED_PLACE", place: previousDestination }
+          : { type: "CURATED_LOCATION", location: previousDestination }
         : null,
     );
     setDestination(previousOrigin);
-    setPickupDestination(previousOrigin);
+    setSelectedOriginPlace(
+      previousDestination && isPlaceSearchOption(previousDestination)
+        ? previousDestination
+        : null,
+    );
+    setSelectedDestinationPlace(
+      previousOrigin && isPlaceSearchOption(previousOrigin)
+        ? previousOrigin
+        : null,
+    );
+    setPickupDestination(
+      previousOrigin && isSupportedLocationOption(previousOrigin)
+        ? previousOrigin
+        : null,
+    );
     setOriginQuery(previousDestinationQuery);
     setDestinationQuery(previousOriginQuery);
 
@@ -384,6 +444,16 @@ export function CommuteSearchForm() {
       setJourneys([]);
       setStatus("error");
       setMessage("Select both an origin and a destination.");
+      return;
+    }
+
+    if (origin.type === "SEARCHED_PLACE" || isPlaceSearchOption(destination)) {
+      setJourneys([]);
+      setCurrentLocationJourneyOptions([]);
+      setStatus("notice");
+      setMessage(
+        "This general place is shown on the map, but verified commute guidance is not available from it yet. Choose a supported commute point to search journeys.",
+      );
       return;
     }
 
@@ -472,11 +542,19 @@ export function CommuteSearchForm() {
           label="Starting location"
           placeholder="Try One Ayala"
           query={originQuery}
-          value={origin?.type === "CURATED_LOCATION" ? origin.location : null}
+          value={
+            origin?.type === "CURATED_LOCATION"
+              ? origin.location
+              : origin?.type === "SEARCHED_PLACE"
+                ? origin.place
+                : null
+          }
           selectedLabel={
             origin?.type === "CURRENT_LOCATION"
               ? "Current location"
-              : origin?.location.name
+              : origin?.type === "CURATED_LOCATION"
+                ? origin.location.name
+                : origin?.place.name
           }
           actionOption={{
             label: "Current location",
@@ -521,7 +599,9 @@ export function CommuteSearchForm() {
           </p>
         ) : null}
 
-        {origin?.type === "CURRENT_LOCATION" && destination ? (
+        {origin?.type === "CURRENT_LOCATION" &&
+        destination &&
+        isSupportedLocationOption(destination) ? (
           <p
             role={pickupJourneySearchStatus === "error" ? "alert" : "status"}
             aria-live="polite"
@@ -729,8 +809,8 @@ export function CommuteSearchForm() {
             </h4>
 
             <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-600">
-              This route may still be awaiting review or field verification.
-              Try another pair of active locations.
+              This route may still be awaiting review or field verification. Try
+              another pair of active locations.
             </p>
           </section>
         ) : null}

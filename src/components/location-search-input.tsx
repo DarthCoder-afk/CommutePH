@@ -2,20 +2,23 @@
 
 import { useEffect, useState, type KeyboardEvent } from "react";
 
-export type LocationOption = {
-  id: string;
-  name: string;
-  slug: string;
-  kind: string;
-  description: string | null;
-  city: string;
-  area: string | null;
-  longitude: number;
-  latitude: number;
-};
+import {
+  isPlaceSearchOption,
+  isSupportedLocationOption,
+  type PlaceSearchOption,
+  type SearchLocationOption,
+  type SupportedLocationOption,
+} from "@/lib/locations/search-location-option";
+
+export type LocationOption = SupportedLocationOption;
+export type { PlaceSearchOption, SearchLocationOption };
 
 type LocationSearchResponse = {
   data: LocationOption[];
+};
+
+type PlaceSearchResponse = {
+  data: PlaceSearchOption[];
 };
 
 type SearchStatus = "idle" | "loading" | "success" | "error";
@@ -35,11 +38,11 @@ type LocationSearchInputProps = {
   label: string;
   placeholder?: string;
   query: string;
-  value: LocationOption | null;
+  value: SearchLocationOption | null;
   selectedLabel?: string | null;
   actionOption?: LocationSearchActionOption;
   onQueryChange: (query: string) => void;
-  onSelectionChange: (location: LocationOption | null) => void;
+  onSelectionChange: (location: SearchLocationOption | null) => void;
 };
 
 export function LocationSearchInput({
@@ -54,7 +57,8 @@ export function LocationSearchInput({
   onQueryChange,
   onSelectionChange,
 }: LocationSearchInputProps) {
-  const [options, setOptions] = useState<LocationOption[]>([]);
+  const [options, setOptions] = useState<SearchLocationOption[]>([]);
+  const [isPlaceSearchAvailable, setIsPlaceSearchAvailable] = useState(true);
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -85,27 +89,54 @@ export function LocationSearchInput({
           q: normalizedQuery,
         });
 
-        const response = await fetch(
-          `/api/locations?${searchParams.toString()}`,
-          {
+        const [locationResponse, placeResponse] = await Promise.all([
+          fetch(`/api/locations?${searchParams.toString()}`, {
             signal: controller.signal,
-          },
-        );
+          }),
+          fetch(`/api/places?${searchParams.toString()}`, {
+            signal: controller.signal,
+          }),
+        ]);
 
-        if (!response.ok) {
+        if (!locationResponse.ok) {
           throw new Error(
-            `Location search failed with status ${response.status}.`,
+            `Location search failed with status ${locationResponse.status}.`,
           );
         }
 
-        const payload = (await response.json()) as LocationSearchResponse;
+        const locationPayload =
+          (await locationResponse.json()) as LocationSearchResponse;
+        let placeOptions: PlaceSearchOption[] = [];
 
-        setOptions(payload.data);
+        if (placeResponse.ok) {
+          const placePayload =
+            (await placeResponse.json()) as PlaceSearchResponse;
+          placeOptions = Array.isArray(placePayload.data)
+            ? placePayload.data
+            : [];
+          setIsPlaceSearchAvailable(true);
+        } else {
+          setIsPlaceSearchAvailable(false);
+        }
+
+        const combinedOptions = [
+          ...locationPayload.data,
+          ...placeOptions.filter(
+            (place) =>
+              !locationPayload.data.some(
+                (location) =>
+                  location.name.toLocaleLowerCase() ===
+                  place.name.toLocaleLowerCase(),
+              ),
+          ),
+        ];
+
+        setOptions(combinedOptions);
         setStatus("success");
         setActiveIndex(
           hasActionOption
             ? actionOptionIndex
-            : payload.data.length > 0
+            : combinedOptions.length > 0
               ? 0
               : -1,
         );
@@ -130,7 +161,7 @@ export function LocationSearchInput({
     };
   }, [hasActionOption, query, selectedLabel]);
 
-  function selectLocation(location: LocationOption) {
+  function selectLocation(location: SearchLocationOption) {
     onQueryChange(location.name);
     setOptions([]);
     setStatus("idle");
@@ -157,10 +188,7 @@ export function LocationSearchInput({
     }
 
     if (!isOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-      if (
-        actionOption ||
-        (query.trim().length >= 2 && status !== "idle")
-      ) {
+      if (actionOption || (query.trim().length >= 2 && status !== "idle")) {
         event.preventDefault();
         setIsOpen(true);
         setActiveIndex(
@@ -308,13 +336,19 @@ export function LocationSearchInput({
         className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-950 transition outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
       />
 
-      <input type="hidden" name={name} value={value?.slug ?? ""} />
+      <input
+        type="hidden"
+        name={name}
+        value={value && isSupportedLocationOption(value) ? value.slug : ""}
+      />
 
       <div id={statusId} className="sr-only" role="status" aria-live="polite">
         {status === "loading" ? "Searching locations." : null}
 
         {status === "success" && options.length === 0
-          ? "No active locations found."
+          ? isPlaceSearchAvailable
+            ? "No supported locations or general places found."
+            : "No supported locations found. General place search is unavailable."
           : null}
 
         {status === "success" && options.length > 0
@@ -372,7 +406,9 @@ export function LocationSearchInput({
 
           {status === "success" && options.length === 0 ? (
             <li className="px-3 py-3 text-sm text-slate-500">
-              No active locations found.
+              {isPlaceSearchAvailable
+                ? "No supported locations or general places found."
+                : "No supported locations found. General place search is not configured."}
             </li>
           ) : null}
 
@@ -397,12 +433,27 @@ export function LocationSearchInput({
                         : "text-slate-900 hover:bg-slate-50"
                     }`}
                   >
-                    <span className="block font-medium">{option.name}</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{option.name}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          isPlaceSearchOption(option)
+                            ? "bg-violet-100 text-violet-800"
+                            : "bg-emerald-100 text-emerald-800"
+                        }`}
+                      >
+                        {isPlaceSearchOption(option)
+                          ? "Place"
+                          : "Supported commute point"}
+                      </span>
+                    </span>
 
                     <span className="mt-1 block text-sm text-slate-500">
-                      {option.area
-                        ? `${option.area}, ${option.city}`
-                        : option.city}
+                      {isPlaceSearchOption(option)
+                        ? option.label
+                        : option.area
+                          ? `${option.area}, ${option.city}`
+                          : option.city}
                     </span>
                   </button>
                 </li>

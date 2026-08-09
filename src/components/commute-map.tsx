@@ -80,6 +80,43 @@ function isRenderableLocation(location: LocationOption) {
   );
 }
 
+function createSearchedPlaceMarkerElement(role: "origin" | "destination") {
+  const marker = document.createElement("button");
+
+  marker.type = "button";
+  marker.className =
+    role === "origin"
+      ? "size-11 cursor-pointer rounded-full border-[3px] border-white bg-violet-700 shadow-lg ring-4 ring-violet-400/35 focus:ring-4 focus:ring-violet-300 focus:outline-none"
+      : "size-11 cursor-pointer rounded-full border-[3px] border-white bg-rose-700 shadow-lg ring-4 ring-rose-400/35 focus:ring-4 focus:ring-rose-300 focus:outline-none";
+
+  return marker;
+}
+
+function createSearchedPlacePopupContent({
+  name,
+  label,
+  role,
+}: {
+  name: string;
+  label: string;
+  role: "origin" | "destination";
+}) {
+  const content = document.createElement("div");
+  const title = document.createElement("strong");
+  const address = document.createElement("span");
+  const status = document.createElement("span");
+
+  title.className = "block text-sm text-slate-950";
+  title.textContent = name;
+  address.className = "mt-1 block text-xs text-slate-600";
+  address.textContent = label;
+  status.className = "mt-2 block text-xs font-semibold text-violet-800";
+  status.textContent = `Searched ${role} · Not a verified commute point`;
+  content.append(title, address, status);
+
+  return content;
+}
+
 function createLocationPopupContent(properties: Record<string, unknown>) {
   const content = document.createElement("div");
   const name = document.createElement("strong");
@@ -179,8 +216,10 @@ export function CommuteMap() {
     pickupJourneyMatches,
     pickupJourneySearchStatus,
     selectedJourneyDetailStatus,
+    selectedDestinationPlace,
     selectedCurrentLocationJourneyMap,
     selectedCurrentLocationJourneyOption,
+    selectedOriginPlace,
     selectedPickupCandidate,
     selectPickupCandidate,
     supportedLocationsStatus,
@@ -189,6 +228,7 @@ export function CommuteMap() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const renderedLocationMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const searchedPlaceMarkersRef = useRef<maplibregl.Marker[]>([]);
   const selectedJourneyMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [status, setStatus] = useState<MapStatus>("loading");
   const [selectedJourneyRenderFailed, setSelectedJourneyRenderFailed] =
@@ -340,6 +380,7 @@ export function CommuteMap() {
 
       currentLocationMarkerRef.current?.remove();
       currentLocationMarkerRef.current = null;
+      searchedPlaceMarkersRef.current = [];
       selectedJourneyMarkersRef.current = [];
       mapRef.current = null;
 
@@ -467,6 +508,91 @@ export function CommuteMap() {
     selectPickupCandidate,
     status,
   ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    for (const marker of searchedPlaceMarkersRef.current) {
+      marker.remove();
+    }
+
+    searchedPlaceMarkersRef.current = [];
+
+    if (!map || status !== "ready") {
+      return;
+    }
+
+    const selectedPlaces = [
+      selectedOriginPlace
+        ? { place: selectedOriginPlace, role: "origin" as const }
+        : null,
+      selectedDestinationPlace
+        ? { place: selectedDestinationPlace, role: "destination" as const }
+        : null,
+    ].filter((entry) => entry !== null);
+
+    if (selectedPlaces.length === 0) {
+      return;
+    }
+
+    const bounds = new maplibregl.LngLatBounds();
+
+    for (const { place, role } of selectedPlaces) {
+      const coordinates: [number, number] = [place.longitude, place.latitude];
+      const markerElement = createSearchedPlaceMarkerElement(role);
+      const roleLabel = role === "origin" ? "Starting place" : "Destination";
+
+      markerElement.title = `${roleLabel}: ${place.name}`;
+      markerElement.setAttribute(
+        "aria-label",
+        `${roleLabel}: ${place.name}. Not a verified commute point.`,
+      );
+
+      const marker = new maplibregl.Marker({
+        element: markerElement,
+        anchor: "center",
+      })
+        .setLngLat(coordinates)
+        .setPopup(
+          new maplibregl.Popup({ offset: 22 }).setDOMContent(
+            createSearchedPlacePopupContent({
+              name: place.name,
+              label: place.label,
+              role,
+            }),
+          ),
+        )
+        .addTo(map);
+
+      searchedPlaceMarkersRef.current.push(marker);
+      bounds.extend(coordinates);
+    }
+
+    if (selectedPlaces.length === 1) {
+      const selectedPlace = selectedPlaces[0]?.place;
+
+      if (selectedPlace) {
+        map.jumpTo({
+          center: [selectedPlace.longitude, selectedPlace.latitude],
+          zoom: 14,
+        });
+      }
+    } else {
+      map.fitBounds(bounds, {
+        padding: 72,
+        maxZoom: 14,
+        duration: 0,
+      });
+    }
+
+    return () => {
+      for (const marker of searchedPlaceMarkersRef.current) {
+        marker.remove();
+      }
+
+      searchedPlaceMarkersRef.current = [];
+    };
+  }, [selectedDestinationPlace, selectedOriginPlace, status]);
 
   useEffect(() => {
     const map = mapRef.current;

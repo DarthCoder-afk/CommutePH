@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type { LocationOption } from "@/components/location-search-input";
+import type { PlaceSearchOption } from "@/lib/locations/search-location-option";
 import { pickupSearchRadiusMeters } from "@/config/pickup-search";
 import { findNearbyLocations } from "@/lib/geolocation/find-nearest-location";
 import {
@@ -81,6 +82,10 @@ type CurrentLocationOriginContextValue = {
   requestCurrentLocation: () => void;
   clearCurrentLocationOrigin: () => void;
   locateOnMap: () => void;
+  selectedOriginPlace: PlaceSearchOption | null;
+  selectedDestinationPlace: PlaceSearchOption | null;
+  setSelectedOriginPlace: (place: PlaceSearchOption | null) => void;
+  setSelectedDestinationPlace: (place: PlaceSearchOption | null) => void;
   activeSupportedLocations: readonly LocationOption[];
   supportedLocationsStatus: SupportedLocationsState["status"];
   nearbyPickupCandidates: ReturnType<
@@ -120,6 +125,10 @@ export function CurrentLocationOriginProvider({
     useState<CurrentPositionUpdate | null>(null);
   const [geolocationStatus, setGeolocationStatus] =
     useState<GeolocationStatus>("idle");
+  const [selectedOriginPlace, setSelectedOriginPlace] =
+    useState<PlaceSearchOption | null>(null);
+  const [selectedDestinationPlace, setSelectedDestinationPlace] =
+    useState<PlaceSearchOption | null>(null);
   const [supportedLocations, setSupportedLocations] =
     useState<SupportedLocationsState>({
       status: "loading",
@@ -501,6 +510,10 @@ export function CurrentLocationOriginProvider({
       requestCurrentLocation,
       clearCurrentLocationOrigin,
       locateOnMap,
+      selectedOriginPlace,
+      selectedDestinationPlace,
+      setSelectedOriginPlace,
+      setSelectedDestinationPlace,
       activeSupportedLocations: supportedLocations.locations,
       supportedLocationsStatus: supportedLocations.status,
       nearbyPickupCandidates,
@@ -524,6 +537,8 @@ export function CurrentLocationOriginProvider({
       requestCurrentLocation,
       clearCurrentLocationOrigin,
       locateOnMap,
+      selectedOriginPlace,
+      selectedDestinationPlace,
       supportedLocations,
       nearbyPickupCandidates,
       selectedPickupCandidate,
