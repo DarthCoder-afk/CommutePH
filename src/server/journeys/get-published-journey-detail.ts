@@ -196,6 +196,9 @@ export async function getPublishedJourneyDetail(slug: string) {
             and(
               inArray(transportRoutes.id, routeIds),
               eq(transportRoutes.isActive, true),
+              eq(transportRoutes.verificationStatus, "verified"),
+              gte(transportRoutes.lastVerifiedAt, verificationCutoff),
+              lte(transportRoutes.lastVerifiedAt, publicDataAssemblyTime),
             ),
           );
   const publishedRouteIds = routeRows.map((route) => route.id);

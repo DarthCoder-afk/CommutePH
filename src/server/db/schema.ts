@@ -625,6 +625,22 @@ export const transportModeEnum = pgEnum("transport_mode", [
   "bgc_bus",
 ]);
 
+export const routeFieldObservationOutcomeEnum = pgEnum(
+  "route_field_observation_outcome",
+  ["confirmed", "not_found", "needs_follow_up"],
+);
+
+export const routeVerificationStatusEnum = pgEnum("route_verification_status", [
+  "unverified",
+  "verified",
+  "outdated",
+]);
+
+export const routeVerificationDecisionEnum = pgEnum(
+  "route_verification_decision",
+  ["approved", "rejected", "needs_follow_up"],
+);
+
 export const transportRoutes = pgTable(
   "transport_routes",
   {
@@ -642,6 +658,15 @@ export const transportRoutes = pgTable(
 
     description: text("description"),
 
+    verificationStatus: routeVerificationStatusEnum("verification_status")
+      .default("unverified")
+      .notNull(),
+
+    lastVerifiedAt: timestamp("last_verified_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
     isActive: boolean("is_active").default(false).notNull(),
 
     createdAt: timestamp("created_at", {
@@ -658,7 +683,230 @@ export const transportRoutes = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [uniqueIndex("transport_routes_slug_uidx").on(table.slug)],
+  (table) => [
+    uniqueIndex("transport_routes_slug_uidx").on(table.slug),
+
+    check(
+      "transport_routes_verified_requires_date",
+      sql`${table.verificationStatus} <> 'verified' OR ${table.lastVerifiedAt} IS NOT NULL`,
+    ),
+
+    check(
+      "transport_routes_active_requires_verification",
+      sql`
+        NOT ${table.isActive}
+        OR
+        (
+          ${table.verificationStatus} = 'verified'
+          AND ${table.lastVerifiedAt} IS NOT NULL
+        )
+      `,
+    ),
+  ],
+);
+
+export const routeFieldObservations = pgTable(
+  "route_field_observations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    transportRouteId: uuid("transport_route_id")
+      .notNull()
+      .references(() => transportRoutes.id, { onDelete: "restrict" }),
+
+    outcome: routeFieldObservationOutcomeEnum("outcome").notNull(),
+
+    observedAt: timestamp("observed_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+
+    observerLabel: varchar("observer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    observedName: varchar("observed_name", { length: 180 }),
+
+    observedMode: transportModeEnum("observed_mode"),
+
+    observedOperator: varchar("observed_operator", { length: 160 }),
+
+    observedSignboard: varchar("observed_signboard", { length: 200 }),
+
+    serviceDays: varchar("service_days", { length: 100 }),
+
+    operatingHours: varchar("operating_hours", { length: 160 }),
+
+    fareMinCentavos: integer("fare_min_centavos"),
+
+    fareMaxCentavos: integer("fare_max_centavos"),
+
+    paymentMethod: varchar("payment_method", { length: 120 }),
+
+    evidenceUrl: text("evidence_url"),
+
+    finalizedAt: timestamp("finalized_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("route_field_observations_route_observed_idx").on(
+      table.transportRouteId,
+      table.observedAt,
+    ),
+
+    uniqueIndex("route_field_observations_submission_uidx").on(
+      table.transportRouteId,
+      table.observedAt,
+      table.observerLabel,
+    ),
+
+    check(
+      "route_field_observations_observer_valid",
+      sql`length(btrim(${table.observerLabel})) >= 2`,
+    ),
+
+    check(
+      "route_field_observations_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+
+    check(
+      "route_field_observations_time_valid",
+      sql`${table.observedAt} <= ${table.createdAt}`,
+    ),
+
+    check(
+      "route_field_observations_fare_valid",
+      sql`
+        (
+          ${table.fareMinCentavos} IS NULL
+          AND ${table.fareMaxCentavos} IS NULL
+        )
+        OR
+        (
+          ${table.fareMinCentavos} IS NOT NULL
+          AND ${table.fareMaxCentavos} IS NOT NULL
+          AND ${table.fareMinCentavos} >= 0
+          AND ${table.fareMaxCentavos} >= ${table.fareMinCentavos}
+        )
+      `,
+    ),
+
+    check(
+      "route_field_observations_confirmed_details_valid",
+      sql`
+        ${table.outcome} <> 'confirmed'
+        OR
+        (
+          ${table.observedName} IS NOT NULL
+          AND length(btrim(${table.observedName})) > 0
+          AND ${table.observedMode} IS NOT NULL
+          AND ${table.observedSignboard} IS NOT NULL
+          AND length(btrim(${table.observedSignboard})) > 0
+          AND ${table.serviceDays} IS NOT NULL
+          AND length(btrim(${table.serviceDays})) > 0
+          AND ${table.operatingHours} IS NOT NULL
+          AND length(btrim(${table.operatingHours})) > 0
+          AND ${table.fareMinCentavos} IS NOT NULL
+          AND ${table.fareMaxCentavos} IS NOT NULL
+          AND ${table.paymentMethod} IS NOT NULL
+          AND length(btrim(${table.paymentMethod})) > 0
+        )
+      `,
+    ),
+  ],
+);
+
+export const routeFieldObservationStops = pgTable(
+  "route_field_observation_stops",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    routeFieldObservationId: uuid("route_field_observation_id")
+      .notNull()
+      .references(() => routeFieldObservations.id, { onDelete: "restrict" }),
+
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    position: integer("position").notNull(),
+
+    canBoard: boolean("can_board").notNull(),
+
+    canAlight: boolean("can_alight").notNull(),
+
+    notes: text("notes"),
+  },
+  (table) => [
+    uniqueIndex("route_field_observation_stops_position_uidx").on(
+      table.routeFieldObservationId,
+      table.position,
+    ),
+
+    check(
+      "route_field_observation_stops_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+
+    check(
+      "route_field_observation_stops_access_valid",
+      sql`${table.canBoard} OR ${table.canAlight}`,
+    ),
+
+    check(
+      "route_field_observation_stops_notes_valid",
+      sql`${table.notes} IS NULL OR length(btrim(${table.notes})) > 0`,
+    ),
+  ],
+);
+
+export const routeVerificationDecisions = pgTable(
+  "route_verification_decisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    routeFieldObservationId: uuid("route_field_observation_id")
+      .notNull()
+      .references(() => routeFieldObservations.id, { onDelete: "restrict" }),
+
+    decision: routeVerificationDecisionEnum("decision").notNull(),
+
+    reviewerLabel: varchar("reviewer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    decidedAt: timestamp("decided_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("route_verification_decisions_observation_uidx").on(
+      table.routeFieldObservationId,
+    ),
+
+    check(
+      "route_verification_decisions_reviewer_valid",
+      sql`length(btrim(${table.reviewerLabel})) >= 2`,
+    ),
+
+    check(
+      "route_verification_decisions_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+  ],
 );
 
 export const transportRouteSchedules = pgTable(
@@ -1073,6 +1321,20 @@ export type NewTransportRouteSchedule =
 
 export type TransportRoute = typeof transportRoutes.$inferSelect;
 export type NewTransportRoute = typeof transportRoutes.$inferInsert;
+
+export type RouteFieldObservation = typeof routeFieldObservations.$inferSelect;
+export type NewRouteFieldObservation =
+  typeof routeFieldObservations.$inferInsert;
+
+export type RouteFieldObservationStop =
+  typeof routeFieldObservationStops.$inferSelect;
+export type NewRouteFieldObservationStop =
+  typeof routeFieldObservationStops.$inferInsert;
+
+export type RouteVerificationDecision =
+  typeof routeVerificationDecisions.$inferSelect;
+export type NewRouteVerificationDecision =
+  typeof routeVerificationDecisions.$inferInsert;
 
 export type Journey = typeof journeys.$inferSelect;
 export type NewJourney = typeof journeys.$inferInsert;

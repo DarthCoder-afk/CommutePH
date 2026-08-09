@@ -380,12 +380,25 @@ async function main() {
             .select({
               id: transportRoutes.id,
               name: transportRoutes.name,
+              verificationStatus: transportRoutes.verificationStatus,
+              lastVerifiedAt: transportRoutes.lastVerifiedAt,
               isActive: transportRoutes.isActive,
             })
             .from(transportRoutes)
             .where(inArray(transportRoutes.id, routeIds));
 
     const routesById = new Map(routeRows.map((route) => [route.id, route]));
+
+    for (const route of routeRows) {
+      if (route.verificationStatus !== "verified") {
+        addBlocker(`Transport route "${route.name}" is not verified.`);
+      }
+      if (!isPublicVerificationCurrent(route.lastVerifiedAt, currentTime)) {
+        addBlocker(
+          `Transport route "${route.name}" needs verification from within the last ${publicVerificationMaxAgeDays} days.`,
+        );
+      }
+    }
 
     const scheduleRows =
       routeIds.length === 0

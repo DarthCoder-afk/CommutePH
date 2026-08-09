@@ -127,7 +127,15 @@ export async function searchPublishedJourneys(
             transportRoutes,
             eq(transportRoutes.id, transportRouteStops.transportRouteId),
           )
-          .where(inArray(transportRouteStops.id, routeStopIds));
+          .where(
+            and(
+              inArray(transportRouteStops.id, routeStopIds),
+              eq(transportRoutes.isActive, true),
+              eq(transportRoutes.verificationStatus, "verified"),
+              gte(transportRoutes.lastVerifiedAt, verificationCutoff),
+              lte(transportRoutes.lastVerifiedAt, currentTime),
+            ),
+          );
 
   const topologyLocationIds = [
     ...new Set([
