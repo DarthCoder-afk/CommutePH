@@ -1,5 +1,6 @@
 import { CommuteMap } from "@/components/commute-map";
 import { CommuteSearchForm } from "@/components/commute-search-form";
+import { CurrentLocationJourneyDetails } from "@/components/current-location-journey-details";
 import { CurrentLocationOriginProvider } from "@/components/current-location-origin-context";
 
 const benefits = [
@@ -103,6 +104,8 @@ export default function Home() {
           <div className="mt-6">
             <CommuteMap />
           </div>
+
+          <CurrentLocationJourneyDetails />
         </section>
       </main>
     </CurrentLocationOriginProvider>

@@ -4,6 +4,7 @@ import type { AssembledJourneySegment } from "@/server/journeys/assemble-journey
 
 type JourneySegmentCardProps = {
   segment: AssembledJourneySegment;
+  displayPosition?: number;
 };
 
 const transportModeLabels = {
@@ -45,12 +46,15 @@ function formatVerificationDate(value: string) {
   }).format(new Date(value));
 }
 
-export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
+export function JourneySegmentCard({
+  segment,
+  displayPosition = segment.position,
+}: JourneySegmentCardProps) {
   return (
     <article className="h-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-          Segment {segment.position}
+          Segment {displayPosition}
         </span>
 
         <span className="text-sm font-semibold text-slate-600">
@@ -239,7 +243,7 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
 
       {segment.publicNotes ? (
         <aside
-          aria-label={`Important note for segment ${segment.position}`}
+          aria-label={`Important note for segment ${displayPosition}`}
           className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
         >
           <p className="text-sm font-bold">Important note</p>
@@ -249,7 +253,7 @@ export function JourneySegmentCard({ segment }: JourneySegmentCardProps) {
       ) : null}
 
       <ol
-        aria-label={`Instructions for segment ${segment.position}`}
+        aria-label={`Instructions for segment ${displayPosition}`}
         className="mt-5 space-y-4 border-t border-slate-200 pt-5"
       >
         {segment.steps.map((step) => (

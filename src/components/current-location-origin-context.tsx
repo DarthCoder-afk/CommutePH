@@ -23,9 +23,9 @@ import type { JourneySummary } from "@/lib/journeys/journey-summary";
 import {
   buildCurrentLocationJourneyMapOverlay,
   type CurrentLocationJourneyMapOverlay,
-  type PublishedJourneyMap,
 } from "@/lib/journeys/build-current-location-journey-map-overlay";
 import type { CurrentLocationJourneyOption } from "@/lib/journeys/build-current-location-journey-options";
+import type { PublishedJourneyDetail } from "@/lib/journeys/published-journey-detail";
 import {
   searchPickupJourneys,
   type PickupJourneyMatch,
@@ -58,9 +58,7 @@ type JourneySearchResponse = {
 };
 
 type JourneyDetailResponse = {
-  data: {
-    map: PublishedJourneyMap;
-  };
+  data: PublishedJourneyDetail;
 };
 
 export type PickupSearchStatus =
@@ -69,7 +67,8 @@ export type PickupSearchStatus =
 export type PickupJourneySearchStatus =
   "idle" | "loading" | "ready" | "empty" | "error";
 
-export type SelectedJourneyMapStatus = "idle" | "loading" | "ready" | "error";
+export type SelectedJourneyDetailStatus =
+  "idle" | "loading" | "ready" | "error";
 
 type NearbyPickupCandidate = ReturnType<
   typeof findNearbyLocations<LocationOption>
@@ -99,8 +98,9 @@ type CurrentLocationOriginContextValue = {
   >[];
   pickupJourneySearchStatus: PickupJourneySearchStatus;
   selectedCurrentLocationJourneyOption: CurrentLocationJourneyOption | null;
+  selectedCurrentLocationJourneyDetail: PublishedJourneyDetail | null;
   selectedCurrentLocationJourneyMap: CurrentLocationJourneyMapOverlay | null;
-  selectedJourneyMapStatus: SelectedJourneyMapStatus;
+  selectedJourneyDetailStatus: SelectedJourneyDetailStatus;
   selectCurrentLocationJourneyOption: (
     option: CurrentLocationJourneyOption | null,
   ) => void;
@@ -138,10 +138,12 @@ export function CurrentLocationOriginProvider({
     useState<PickupJourneySearchStatus>("idle");
   const [selectedCurrentLocationJourneyOption, setSelectedJourneyOption] =
     useState<CurrentLocationJourneyOption | null>(null);
+  const [selectedCurrentLocationJourneyDetail, setSelectedJourneyDetail] =
+    useState<PublishedJourneyDetail | null>(null);
   const [selectedCurrentLocationJourneyMap, setSelectedJourneyMap] =
     useState<CurrentLocationJourneyMapOverlay | null>(null);
-  const [selectedJourneyMapStatus, setSelectedJourneyMapStatus] =
-    useState<SelectedJourneyMapStatus>("idle");
+  const [selectedJourneyDetailStatus, setSelectedJourneyDetailStatus] =
+    useState<SelectedJourneyDetailStatus>("idle");
 
   const requestDeviceLocation = useCallback((selectAsOrigin: boolean) => {
     if (!("geolocation" in navigator)) {
@@ -182,8 +184,9 @@ export function CurrentLocationOriginProvider({
 
         if (selectAsOrigin) {
           setSelectedJourneyOption(null);
+          setSelectedJourneyDetail(null);
           setSelectedJourneyMap(null);
-          setSelectedJourneyMapStatus("idle");
+          setSelectedJourneyDetailStatus("idle");
           setCurrentLocationOrigin((current) => ({
             origin: {
               type: "CURRENT_LOCATION",
@@ -218,8 +221,9 @@ export function CurrentLocationOriginProvider({
   const clearCurrentLocationOrigin = useCallback(() => {
     setCurrentLocationOrigin(null);
     setSelectedJourneyOption(null);
+    setSelectedJourneyDetail(null);
     setSelectedJourneyMap(null);
-    setSelectedJourneyMapStatus("idle");
+    setSelectedJourneyDetailStatus("idle");
   }, []);
 
   const locateOnMap = useCallback(() => {
@@ -286,12 +290,14 @@ export function CurrentLocationOriginProvider({
   const selectCurrentLocationJourneyOption = useCallback(
     (option: CurrentLocationJourneyOption | null) => {
       setSelectedJourneyOption(option);
+      setSelectedJourneyDetail(null);
+      setSelectedJourneyMap(null);
 
       if (option) {
         setSelectedPickupLocationId(option.pickup.id);
+        setSelectedJourneyDetailStatus("loading");
       } else {
-        setSelectedJourneyMap(null);
-        setSelectedJourneyMapStatus("idle");
+        setSelectedJourneyDetailStatus("idle");
       }
     },
     [],
@@ -301,8 +307,9 @@ export function CurrentLocationOriginProvider({
     (destination: LocationOption | null) => {
       setPickupDestinationState(destination);
       setSelectedJourneyOption(null);
+      setSelectedJourneyDetail(null);
       setSelectedJourneyMap(null);
-      setSelectedJourneyMapStatus("idle");
+      setSelectedJourneyDetailStatus("idle");
     },
     [],
   );
@@ -420,15 +427,17 @@ export function CurrentLocationOriginProvider({
   useEffect(() => {
     const controller = new AbortController();
 
-    const loadSelectedJourneyMap = async () => {
+    const loadSelectedJourneyDetail = async () => {
       if (!selectedCurrentLocationJourneyOption || !currentLocationOrigin) {
+        setSelectedJourneyDetail(null);
         setSelectedJourneyMap(null);
-        setSelectedJourneyMapStatus("idle");
+        setSelectedJourneyDetailStatus("idle");
         return;
       }
 
+      setSelectedJourneyDetail(null);
       setSelectedJourneyMap(null);
-      setSelectedJourneyMapStatus("loading");
+      setSelectedJourneyDetailStatus("loading");
 
       try {
         const response = await fetch(
@@ -444,9 +453,9 @@ export function CurrentLocationOriginProvider({
 
         const payload = (await response.json()) as JourneyDetailResponse;
 
-        if (!payload.data?.map) {
+        if (!payload.data?.map || !Array.isArray(payload.data.segments)) {
           throw new Error(
-            "The selected journey endpoint returned an invalid map response.",
+            "The selected journey endpoint returned an invalid detail response.",
           );
         }
 
@@ -456,20 +465,22 @@ export function CurrentLocationOriginProvider({
           publishedMap: payload.data.map,
         });
 
+        setSelectedJourneyDetail(payload.data);
         setSelectedJourneyMap(overlay);
-        setSelectedJourneyMapStatus("ready");
+        setSelectedJourneyDetailStatus("ready");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
 
-        console.error("Failed to load the selected journey map:", error);
+        console.error("Failed to load the selected journey detail:", error);
+        setSelectedJourneyDetail(null);
         setSelectedJourneyMap(null);
-        setSelectedJourneyMapStatus("error");
+        setSelectedJourneyDetailStatus("error");
       }
     };
 
-    void loadSelectedJourneyMap();
+    void loadSelectedJourneyDetail();
 
     return () => {
       controller.abort();
@@ -501,8 +512,9 @@ export function CurrentLocationOriginProvider({
       pickupJourneyMatches,
       pickupJourneySearchStatus,
       selectedCurrentLocationJourneyOption,
+      selectedCurrentLocationJourneyDetail,
       selectedCurrentLocationJourneyMap,
-      selectedJourneyMapStatus,
+      selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     }),
     [
@@ -521,8 +533,9 @@ export function CurrentLocationOriginProvider({
       pickupJourneyMatches,
       pickupJourneySearchStatus,
       selectedCurrentLocationJourneyOption,
+      selectedCurrentLocationJourneyDetail,
       selectedCurrentLocationJourneyMap,
-      selectedJourneyMapStatus,
+      selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     ],
   );

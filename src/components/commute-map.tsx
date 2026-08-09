@@ -178,9 +178,9 @@ export function CommuteMap() {
     nearbyPickupCandidates,
     pickupJourneyMatches,
     pickupJourneySearchStatus,
+    selectedJourneyDetailStatus,
     selectedCurrentLocationJourneyMap,
     selectedCurrentLocationJourneyOption,
-    selectedJourneyMapStatus,
     selectedPickupCandidate,
     selectPickupCandidate,
     supportedLocationsStatus,
@@ -841,20 +841,22 @@ export function CommuteMap() {
       {selectedCurrentLocationJourneyOption ? (
         <div
           role={
-            selectedJourneyMapStatus === "error" || selectedJourneyRenderFailed
+            selectedJourneyDetailStatus === "error" ||
+            selectedJourneyRenderFailed
               ? "alert"
               : "status"
           }
           aria-live="polite"
           className={`rounded-xl border p-3 text-sm leading-6 ${
-            selectedJourneyMapStatus === "error" || selectedJourneyRenderFailed
+            selectedJourneyDetailStatus === "error" ||
+            selectedJourneyRenderFailed
               ? "border-amber-200 bg-amber-50 text-amber-950"
               : "border-blue-200 bg-blue-50 text-blue-950"
           }`}
         >
-          {selectedJourneyMapStatus === "loading"
+          {selectedJourneyDetailStatus === "loading"
             ? "Loading the selected verified journey map…"
-            : selectedJourneyMapStatus === "error" ||
+            : selectedJourneyDetailStatus === "error" ||
                 selectedJourneyRenderFailed
               ? "The selected journey route could not be displayed. Its text directions remain available."
               : `Showing ${selectedCurrentLocationJourneyOption.publishedJourney.title}. The amber dotted line is an estimated initial walk; blue and gray paths come from verified journey data.`}
