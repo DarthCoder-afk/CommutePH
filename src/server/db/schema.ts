@@ -61,6 +61,11 @@ export const locationDuplicateDetectionReasonEnum = pgEnum(
   ["same_normalized_name", "very_close_proximity"],
 );
 
+export const locationFieldObservationOutcomeEnum = pgEnum(
+  "location_field_observation_outcome",
+  ["confirmed", "not_found", "needs_follow_up"],
+);
+
 export const locations = pgTable(
   "locations",
   {
@@ -231,6 +236,118 @@ export const locationDuplicateReviews = pgTable(
           AND ${table.reviewerNotes} IS NOT NULL
           AND length(btrim(${table.reviewerNotes})) >= 10
           AND ${table.reviewedAt} IS NOT NULL
+        )
+      `,
+    ),
+  ],
+);
+
+export const locationFieldObservations = pgTable(
+  "location_field_observations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    outcome: locationFieldObservationOutcomeEnum("outcome").notNull(),
+
+    observedAt: timestamp("observed_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+
+    observerLabel: varchar("observer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    observedName: varchar("observed_name", { length: 160 }),
+
+    observedKind: locationKindEnum("observed_kind"),
+
+    observedCoordinates: geometry("observed_coordinates", {
+      type: "point",
+      mode: "xy",
+      srid: 4326,
+    }),
+
+    accuracyMeters: integer("accuracy_meters"),
+
+    evidenceUrl: text("evidence_url"),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("location_field_observations_location_observed_idx").on(
+      table.locationId,
+      table.observedAt,
+    ),
+
+    uniqueIndex("location_field_observations_submission_uidx").on(
+      table.locationId,
+      table.observedAt,
+      table.observerLabel,
+    ),
+
+    check(
+      "location_field_observations_observer_valid",
+      sql`length(btrim(${table.observerLabel})) >= 2`,
+    ),
+
+    check(
+      "location_field_observations_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+
+    check(
+      "location_field_observations_time_valid",
+      sql`${table.observedAt} <= ${table.createdAt}`,
+    ),
+
+    check(
+      "location_field_observations_coordinates_valid",
+      sql`
+        ${table.observedCoordinates} IS NULL
+        OR
+        (
+          ST_X(${table.observedCoordinates}) BETWEEN -180 AND 180
+          AND ST_Y(${table.observedCoordinates}) BETWEEN -90 AND 90
+        )
+      `,
+    ),
+
+    check(
+      "location_field_observations_accuracy_valid",
+      sql`
+        (
+          ${table.observedCoordinates} IS NULL
+          AND ${table.accuracyMeters} IS NULL
+        )
+        OR
+        (
+          ${table.observedCoordinates} IS NOT NULL
+          AND ${table.accuracyMeters} IS NOT NULL
+          AND ${table.accuracyMeters} BETWEEN 1 AND 10000
+        )
+      `,
+    ),
+
+    check(
+      "location_field_observations_confirmed_details_valid",
+      sql`
+        ${table.outcome} <> 'confirmed'
+        OR
+        (
+          ${table.observedName} IS NOT NULL
+          AND length(btrim(${table.observedName})) > 0
+          AND ${table.observedKind} IS NOT NULL
+          AND ${table.observedCoordinates} IS NOT NULL
         )
       `,
     ),
@@ -921,6 +1038,11 @@ export type LocationDuplicateReview =
   typeof locationDuplicateReviews.$inferSelect;
 export type NewLocationDuplicateReview =
   typeof locationDuplicateReviews.$inferInsert;
+
+export type LocationFieldObservation =
+  typeof locationFieldObservations.$inferSelect;
+export type NewLocationFieldObservation =
+  typeof locationFieldObservations.$inferInsert;
 
 export type JourneySource = typeof journeySources.$inferSelect;
 export type NewJourneySource = typeof journeySources.$inferInsert;
