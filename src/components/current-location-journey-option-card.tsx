@@ -5,6 +5,7 @@ import {
   Clock3,
   Coins,
   Footprints,
+  Repeat2,
   Sparkles,
 } from "lucide-react";
 
@@ -42,6 +43,10 @@ function formatFare(
   return minCentavos === maxCentavos
     ? minimumFare
     : `${minimumFare}–${maximumFare}`;
+}
+
+function formatTransfers(transferCount: number) {
+  return transferCount === 0 ? "Direct" : `${transferCount} transfer`;
 }
 
 export function CurrentLocationJourneyOptionCard({
@@ -98,7 +103,7 @@ export function CurrentLocationJourneyOptionCard({
         </span>
       </div>
 
-      <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-slate-50 p-3">
           <dt className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
             <Clock3 aria-hidden="true" className="size-4" />
@@ -141,6 +146,16 @@ export function CurrentLocationJourneyOptionCard({
               option.initialWalkingSegment.estimatedDuration.minMinutes,
               option.initialWalkingSegment.estimatedDuration.maxMinutes,
             )}
+          </dd>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-3">
+          <dt className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            <Repeat2 aria-hidden="true" className="size-4" />
+            Transfers
+          </dt>
+          <dd className="mt-1 font-semibold text-slate-950">
+            {formatTransfers(option.publishedJourney.transferCount)}
           </dd>
         </div>
       </dl>

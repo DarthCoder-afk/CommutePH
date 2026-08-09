@@ -1,5 +1,5 @@
-import { searchPublishedDirectJourneys } from "@/server/journeys/search-direct-journeys";
 import { jsonNoStore } from "@/server/http/json-no-store";
+import { searchPublishedJourneys } from "@/server/journeys/search-published-journeys";
 
 export const runtime = "nodejs";
 
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await searchPublishedDirectJourneys(origin, destination);
+    const result = await searchPublishedJourneys(origin, destination);
 
     return jsonNoStore({
       data: result,
@@ -67,11 +67,11 @@ export async function GET(request: Request) {
         origin,
         destination,
         count: result.length,
-        searchType: "direct",
+        searchType: "direct-and-one-transfer",
       },
     });
   } catch (error) {
-    console.error("Failed to search direct journeys:", error);
+    console.error("Failed to search journeys:", error);
 
     return jsonNoStore(
       {

@@ -35,7 +35,7 @@ type JourneySearchSuccess = {
     origin: string;
     destination: string;
     count: number;
-    searchType: "direct";
+    searchType: "direct-and-one-transfer";
   };
 };
 
