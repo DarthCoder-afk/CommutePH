@@ -31,6 +31,7 @@ export async function searchPublishedJourneys(
       and(
         inArray(locations.slug, [originSlug, destinationSlug]),
         eq(locations.isActive, true),
+        eq(locations.verificationStatus, "verified"),
       ),
     );
 
@@ -146,7 +147,13 @@ export async function searchPublishedJourneys(
       isActive: locations.isActive,
     })
     .from(locations)
-    .where(inArray(locations.id, topologyLocationIds));
+    .where(
+      and(
+        inArray(locations.id, topologyLocationIds),
+        eq(locations.isActive, true),
+        eq(locations.verificationStatus, "verified"),
+      ),
+    );
 
   return assemblePublishedJourneySearchResults({
     origin,

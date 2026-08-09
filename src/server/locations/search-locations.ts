@@ -17,9 +17,13 @@ export async function searchActiveLocations(query: string) {
 
   const searchCondition =
     normalizedQuery.length === 0
-      ? eq(locations.isActive, true)
+      ? and(
+          eq(locations.isActive, true),
+          eq(locations.verificationStatus, "verified"),
+        )
       : and(
           eq(locations.isActive, true),
+          eq(locations.verificationStatus, "verified"),
           or(
             ilike(locations.name, `%${escapeLikePattern(normalizedQuery)}%`),
             ilike(locations.city, `%${escapeLikePattern(normalizedQuery)}%`),

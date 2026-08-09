@@ -447,6 +447,8 @@ async function main() {
         id: locations.id,
         name: locations.name,
         isActive: locations.isActive,
+        verificationStatus: locations.verificationStatus,
+        sourceType: locations.sourceType,
       })
       .from(locations)
       .where(inArray(locations.id, relatedLocationIds));
@@ -465,6 +467,16 @@ async function main() {
 
       if (!location.isActive) {
         addBlocker(`${label} location "${location.name}" is inactive.`);
+      }
+
+      if (location.verificationStatus !== "verified") {
+        addBlocker(`${label} location "${location.name}" is not verified.`);
+      }
+
+      if (location.sourceType === "development_fixture") {
+        addBlocker(
+          `${label} location "${location.name}" is a development fixture.`,
+        );
       }
     }
 

@@ -257,7 +257,11 @@ export async function getPublishedJourneyDetail(slug: string) {
     })
     .from(locations)
     .where(
-      and(inArray(locations.id, locationIds), eq(locations.isActive, true)),
+      and(
+        inArray(locations.id, locationIds),
+        eq(locations.isActive, true),
+        eq(locations.verificationStatus, "verified"),
+      ),
     );
 
   const locationRows = rawLocationRows.map(({ coordinates, ...location }) => ({

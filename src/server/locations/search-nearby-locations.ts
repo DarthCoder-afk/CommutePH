@@ -42,6 +42,7 @@ export async function searchNearbyActiveLocations({
     .where(
       and(
         eq(locations.isActive, true),
+        eq(locations.verificationStatus, "verified"),
         sql`ST_DWithin(
           ${locations.coordinates}::geography,
           ${searchPoint},

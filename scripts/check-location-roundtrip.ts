@@ -68,8 +68,12 @@ async function checkLocationRoundTrip() {
       );
     }
 
-    if (!selectedLocation.isActive) {
-      throw new Error("The isActive database default was not applied.");
+    if (selectedLocation.isActive) {
+      throw new Error("New locations must default to inactive.");
+    }
+
+    if (selectedLocation.verificationStatus !== "unverified") {
+      throw new Error("New locations must default to unverified.");
     }
 
     console.table([
@@ -79,6 +83,7 @@ async function checkLocationRoundTrip() {
         longitude: selectedLocation.coordinates.x,
         latitude: selectedLocation.coordinates.y,
         isActive: selectedLocation.isActive,
+        verificationStatus: selectedLocation.verificationStatus,
       },
     ]);
 

@@ -39,6 +39,18 @@ export const locationKindEnum = pgEnum("location_kind", [
   "entrance",
 ]);
 
+export const locationVerificationStatusEnum = pgEnum(
+  "location_verification_status",
+  ["unverified", "verified", "outdated"],
+);
+
+export const locationSourceTypeEnum = pgEnum("location_source_type", [
+  "manual",
+  "openstreetmap",
+  "gtfs",
+  "development_fixture",
+]);
+
 export const locations = pgTable(
   "locations",
   {
@@ -62,7 +74,24 @@ export const locations = pgTable(
       srid: 4326,
     }).notNull(),
 
-    isActive: boolean("is_active").default(true).notNull(),
+    verificationStatus: locationVerificationStatusEnum("verification_status")
+      .default("unverified")
+      .notNull(),
+
+    lastVerifiedAt: timestamp("last_verified_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    sourceType: locationSourceTypeEnum("source_type")
+      .default("manual")
+      .notNull(),
+
+    sourceExternalId: varchar("source_external_id", { length: 200 }),
+
+    sourceUrl: text("source_url"),
+
+    isActive: boolean("is_active").default(false).notNull(),
 
     createdAt: timestamp("created_at", {
       withTimezone: true,
@@ -81,6 +110,10 @@ export const locations = pgTable(
   (table) => [
     uniqueIndex("locations_slug_uidx").on(table.slug),
 
+    uniqueIndex("locations_source_external_id_uidx")
+      .on(table.sourceType, table.sourceExternalId)
+      .where(sql`${table.sourceExternalId} IS NOT NULL`),
+
     index("locations_coordinates_gix").using("gist", table.coordinates),
 
     check(
@@ -88,6 +121,19 @@ export const locations = pgTable(
       sql`
         ST_X(${table.coordinates}) BETWEEN -180 AND 180
         AND ST_Y(${table.coordinates}) BETWEEN -90 AND 90
+      `,
+    ),
+
+    check(
+      "locations_active_requires_verified",
+      sql`NOT ${table.isActive} OR ${table.verificationStatus} = 'verified'`,
+    ),
+
+    check(
+      "locations_external_source_has_id",
+      sql`
+        ${table.sourceType} NOT IN ('openstreetmap', 'gtfs')
+        OR ${table.sourceExternalId} IS NOT NULL
       `,
     ),
   ],

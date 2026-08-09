@@ -78,6 +78,13 @@
       "when": 1785726361732,
       "tag": "0010_luxuriant_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786244173190,
+      "tag": "0011_closed_wild_pack",
+      "breakpoints": true
     }
   ]
 }

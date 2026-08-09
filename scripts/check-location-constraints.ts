@@ -125,6 +125,43 @@ async function main() {
 
     console.log("Coordinate range constraint passed (23514).");
 
+    await expectConstraintError(
+      client,
+      "active_unverified_test",
+      "23514",
+      async () => {
+        await db.insert(locations).values({
+          name: "Active Unverified Location",
+          slug: `${testSlug}-active-unverified`,
+          kind: "stop",
+          city: "Test City",
+          coordinates: { x: 121, y: 14.6 },
+          verificationStatus: "unverified",
+          isActive: true,
+        });
+      },
+    );
+
+    console.log("Active locations require verified status (23514).");
+
+    await expectConstraintError(
+      client,
+      "external_source_id_test",
+      "23514",
+      async () => {
+        await db.insert(locations).values({
+          name: "External Location Without ID",
+          slug: `${testSlug}-missing-external-id`,
+          kind: "stop",
+          city: "Test City",
+          coordinates: { x: 121, y: 14.6 },
+          sourceType: "openstreetmap",
+        });
+      },
+    );
+
+    console.log("External sources require stable identifiers (23514).");
+
     await client.query("ROLLBACK");
     transactionStarted = false;
 
