@@ -1,6 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { normalizeMetroManilaCity } from "@/server/locations/normalize-metro-manila-city";
+
 type OsmElement = {
   type: "node" | "way" | "relation";
   id: number;
@@ -17,41 +19,84 @@ type OverpassResponse = {
   elements?: OsmElement[];
 };
 
-const outputPath = process.argv.slice(2).find((argument) => argument !== "--");
-const overpassUrl = "https://overpass-api.de/api/interpreter";
-const metroManilaBoundingBox = "14.349,120.906,14.785,121.135";
-const metroManilaCities = new Map(
-  [
-    "Caloocan",
-    "Las Piñas",
-    "Makati",
-    "Malabon",
-    "Mandaluyong",
-    "Manila",
-    "Marikina",
-    "Muntinlupa",
-    "Navotas",
-    "Parañaque",
-    "Pasay",
-    "Pasig",
-    "Pateros",
-    "Quezon City",
-    "San Juan",
-    "Taguig",
-    "Valenzuela",
-  ].map((city) => [city.toLocaleLowerCase(), city]),
-);
+function parseOptions(arguments_: string[]) {
+  const values = arguments_.filter((argument) => argument !== "--");
+  const outputPath = values[0];
+  let city: string | null = null;
 
-metroManilaCities.set("caloocan city", "Caloocan");
+  for (let index = 1; index < values.length; index += 1) {
+    if (values[index] !== "--city") {
+      throw new Error(`Unknown argument: ${values[index]}.`);
+    }
+
+    const requestedCity = values[index + 1];
+    const normalizedCity = requestedCity
+      ? normalizeMetroManilaCity(requestedCity)
+      : null;
+
+    if (!normalizedCity) {
+      throw new Error("--city requires a supported Metro Manila city name.");
+    }
+
+    city = normalizedCity;
+    index += 1;
+  }
+
+  return { outputPath, city };
+}
+
+const options = parseOptions(process.argv.slice(2));
+const overpassUrls = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+] as const;
+const metroManilaBoundingBox = "14.349,120.906,14.785,121.135";
+const citySelector =
+  options.city === "Pasig"
+    ? '["addr:city"~"^Pasig( City)?$",i]'
+    : options.city
+      ? `["addr:city"="${options.city}"]`
+      : '["addr:city"]';
 
 const query = `[out:json][timeout:120];
 (
-  nwr["highway"="bus_stop"]["name"]["addr:city"](${metroManilaBoundingBox});
-  nwr["public_transport"~"^(station|platform)$"]["name"]["addr:city"](${metroManilaBoundingBox});
-  nwr["railway"~"^(station|halt|tram_stop|subway_entrance)$"]["name"]["addr:city"](${metroManilaBoundingBox});
-  nwr["amenity"="bus_station"]["name"]["addr:city"](${metroManilaBoundingBox});
+  nwr["highway"="bus_stop"]["name"]${citySelector}(${metroManilaBoundingBox});
+  nwr["public_transport"~"^(station|platform)$"]["name"]${citySelector}(${metroManilaBoundingBox});
+  nwr["railway"~"^(station|halt|tram_stop|subway_entrance)$"]["name"]${citySelector}(${metroManilaBoundingBox});
+  nwr["amenity"="bus_station"]["name"]${citySelector}(${metroManilaBoundingBox});
 );
 out center tags;`;
+
+async function fetchOverpassResponse() {
+  const failures: string[] = [];
+
+  for (const overpassUrl of overpassUrls) {
+    try {
+      const response = await fetch(overpassUrl, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "User-Agent": "CommuteMap-PH provisional stop importer",
+        },
+        body: new URLSearchParams({ data: query }),
+        signal: AbortSignal.timeout(150_000),
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      failures.push(`${overpassUrl}: HTTP ${response.status}`);
+    } catch (error) {
+      failures.push(
+        `${overpassUrl}: ${error instanceof Error ? error.message : "request failed"}`,
+      );
+    }
+  }
+
+  throw new Error(`All Overpass requests failed:\n${failures.join("\n")}`);
+}
 
 function slugify(value: string) {
   return value
@@ -105,24 +150,13 @@ function getCoordinates(element: OsmElement) {
 }
 
 async function main() {
-  if (!outputPath) {
+  if (!options.outputPath) {
     throw new Error(
-      "Provide an output path. Example: pnpm db:fetch-osm-provisional-stops -- /tmp/metro-manila-osm-stops.json",
+      "Provide an output path. Example: pnpm db:fetch-osm-provisional-stops -- /tmp/metro-manila-osm-stops.json --city Pasig",
     );
   }
 
-  const searchParams = new URLSearchParams({ data: query });
-  const response = await fetch(`${overpassUrl}?${searchParams.toString()}`, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "CommuteMap-PH provisional stop importer",
-    },
-    signal: AbortSignal.timeout(150_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Overpass request failed with status ${response.status}.`);
-  }
+  const response = await fetchOverpassResponse();
 
   const payload = (await response.json()) as OverpassResponse;
 
@@ -136,12 +170,14 @@ async function main() {
     const coordinates = getCoordinates(element);
     const name = tags?.name?.trim();
     const sourceCity = tags?.["addr:city"]?.trim();
-    const city = sourceCity
-      ? metroManilaCities.get(sourceCity.toLocaleLowerCase())
-      : null;
+    const city = sourceCity ? normalizeMetroManilaCity(sourceCity) : null;
 
     if (!tags || !name || !city || !coordinates) {
       skipped += 1;
+      return [];
+    }
+
+    if (options.city && city !== options.city) {
       return [];
     }
 
@@ -177,14 +213,16 @@ async function main() {
     stops,
   };
 
-  const absoluteOutputPath = resolve(outputPath);
+  const absoluteOutputPath = resolve(options.outputPath);
 
   await writeFile(absoluteOutputPath, `${JSON.stringify(output, null, 2)}\n`, {
     encoding: "utf8",
     flag: "wx",
   });
 
-  console.log(`Prepared ${stops.length} provisional OpenStreetMap stops.`);
+  console.log(
+    `Prepared ${stops.length} provisional OpenStreetMap stops${options.city ? ` for ${options.city}` : ""}.`,
+  );
   console.log(`Skipped ${skipped} malformed or incomplete elements.`);
   console.log(`Wrote ${absoluteOutputPath}.`);
   console.log("No database records were modified by this command.");
