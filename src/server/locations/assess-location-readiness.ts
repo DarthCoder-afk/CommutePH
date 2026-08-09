@@ -15,6 +15,7 @@ export type LocationReadinessRecord = {
   sourceType: "manual" | "openstreetmap" | "gtfs" | "development_fixture";
   sourceExternalId: string | null;
   sourceUrl: string | null;
+  hasApprovedFieldVerification?: boolean;
 };
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -79,6 +80,16 @@ export function assessLocationReadiness(
     (!location.sourceUrl || !isValidHttpUrl(location.sourceUrl))
   ) {
     blockers.push("The external source needs a valid HTTP source URL.");
+  }
+
+  if (
+    (location.sourceType === "openstreetmap" ||
+      location.sourceType === "gtfs") &&
+    !location.hasApprovedFieldVerification
+  ) {
+    blockers.push(
+      "The imported location needs an approved field-verification observation.",
+    );
   }
 
   if (!isPublicVerificationCurrent(location.lastVerifiedAt, currentTime)) {

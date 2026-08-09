@@ -66,6 +66,11 @@ export const locationFieldObservationOutcomeEnum = pgEnum(
   ["confirmed", "not_found", "needs_follow_up"],
 );
 
+export const locationVerificationDecisionEnum = pgEnum(
+  "location_verification_decision",
+  ["approved", "rejected", "needs_follow_up"],
+);
+
 export const locations = pgTable(
   "locations",
   {
@@ -350,6 +355,47 @@ export const locationFieldObservations = pgTable(
           AND ${table.observedCoordinates} IS NOT NULL
         )
       `,
+    ),
+  ],
+);
+
+export const locationVerificationDecisions = pgTable(
+  "location_verification_decisions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    observationId: uuid("observation_id")
+      .notNull()
+      .references(() => locationFieldObservations.id, {
+        onDelete: "restrict",
+      }),
+
+    decision: locationVerificationDecisionEnum("decision").notNull(),
+
+    reviewerLabel: varchar("reviewer_label", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    decidedAt: timestamp("decided_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("location_verification_decisions_observation_uidx").on(
+      table.observationId,
+    ),
+
+    check(
+      "location_verification_decisions_reviewer_valid",
+      sql`length(btrim(${table.reviewerLabel})) >= 2`,
+    ),
+
+    check(
+      "location_verification_decisions_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
     ),
   ],
 );
@@ -1043,6 +1089,11 @@ export type LocationFieldObservation =
   typeof locationFieldObservations.$inferSelect;
 export type NewLocationFieldObservation =
   typeof locationFieldObservations.$inferInsert;
+
+export type LocationVerificationDecision =
+  typeof locationVerificationDecisions.$inferSelect;
+export type NewLocationVerificationDecision =
+  typeof locationVerificationDecisions.$inferInsert;
 
 export type JourneySource = typeof journeySources.$inferSelect;
 export type NewJourneySource = typeof journeySources.$inferInsert;

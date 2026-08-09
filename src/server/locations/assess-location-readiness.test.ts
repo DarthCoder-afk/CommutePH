@@ -19,6 +19,7 @@ const readyLocation = {
   sourceType: "openstreetmap",
   sourceExternalId: "node/123",
   sourceUrl: "https://www.openstreetmap.org/node/123",
+  hasApprovedFieldVerification: true,
 } satisfies LocationReadinessRecord;
 
 test("passes a recently verified sourced location", () => {
@@ -70,6 +71,7 @@ test("requires stable provenance for external sources", () => {
       ...readyLocation,
       sourceExternalId: null,
       sourceUrl: "not-a-url",
+      hasApprovedFieldVerification: false,
     },
     currentTime,
   );
@@ -81,6 +83,11 @@ test("requires stable provenance for external sources", () => {
   assert.ok(
     result.blockers.includes(
       "The external source needs a valid HTTP source URL.",
+    ),
+  );
+  assert.ok(
+    result.blockers.includes(
+      "The imported location needs an approved field-verification observation.",
     ),
   );
 });

@@ -26,6 +26,8 @@
     "db:review-location-duplicate": "tsx scripts/review-location-duplicate.ts",
     "db:record-location-field-observation": "tsx scripts/record-location-field-observation.ts",
     "db:report-location-field-observations": "tsx scripts/report-location-field-observations.ts",
+    "db:review-location-field-observation": "tsx scripts/review-location-field-observation.ts",
+    "db:report-location-verification-decisions": "tsx scripts/report-location-verification-decisions.ts",
     "db:seed": "tsx scripts/seed-locations.ts",
     "db:seed-draft-routes": "tsx scripts/seed-draft-routes.ts",
     "db:seed-draft-journey": "tsx scripts/seed-draft-journey.ts",

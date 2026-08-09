@@ -1,10 +1,14 @@
 import "dotenv/config";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-import { locations } from "@/server/db/schema";
+import {
+  locationFieldObservations,
+  locations,
+  locationVerificationDecisions,
+} from "@/server/db/schema";
 import { assessLocationReadiness } from "@/server/locations/assess-location-readiness";
 
 const locationSlug = process.argv
@@ -28,6 +32,7 @@ async function main() {
   try {
     const [row] = await db
       .select({
+        id: locations.id,
         name: locations.name,
         slug: locations.slug,
         kind: locations.kind,
@@ -48,10 +53,32 @@ async function main() {
       throw new Error(`Location "${locationSlug}" was not found.`);
     }
 
+    const [approvedFieldVerification] = row.lastVerifiedAt
+      ? await db
+          .select({ id: locationVerificationDecisions.id })
+          .from(locationVerificationDecisions)
+          .innerJoin(
+            locationFieldObservations,
+            eq(
+              locationVerificationDecisions.observationId,
+              locationFieldObservations.id,
+            ),
+          )
+          .where(
+            and(
+              eq(locationFieldObservations.locationId, row.id),
+              eq(locationFieldObservations.observedAt, row.lastVerifiedAt),
+              eq(locationVerificationDecisions.decision, "approved"),
+            ),
+          )
+          .limit(1)
+      : [];
+
     const result = assessLocationReadiness({
       ...row,
       longitude: row.coordinates.x,
       latitude: row.coordinates.y,
+      hasApprovedFieldVerification: Boolean(approvedFieldVerification),
     });
 
     console.log(`Location: ${row.name}`);
