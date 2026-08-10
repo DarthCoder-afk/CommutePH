@@ -203,8 +203,9 @@ async function main() {
       .orderBy(asc(journeySegments.position));
 
     for (const segment of segmentRows) {
-      if (
-        segment.pathGeoJson !== null &&
+      if (segment.pathGeoJson === null) {
+        addBlocker(`Segment ${segment.position} needs a verified path.`);
+      } else if (
         !isPublicVerificationCurrent(segment.pathLastVerifiedAt, currentTime)
       ) {
         addBlocker(
@@ -458,6 +459,19 @@ async function main() {
     }
 
     for (const route of routeRows) {
+      const hasCurrentActiveSchedule = scheduleRows.some(
+        (schedule) =>
+          schedule.transportRouteId === route.id &&
+          schedule.isActive &&
+          isPublicVerificationCurrent(schedule.lastVerifiedAt, currentTime),
+      );
+
+      if (!hasCurrentActiveSchedule) {
+        addBlocker(
+          `Transport route "${route.name}" needs at least one active schedule verified within the last ${publicVerificationMaxAgeDays} days.`,
+        );
+      }
+
       try {
         assemblePublishedRouteSchedules(route.id, scheduleRows, currentTime);
       } catch (error) {

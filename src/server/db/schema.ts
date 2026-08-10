@@ -1543,6 +1543,67 @@ export const journeyVerificationDecisions = pgTable(
   ],
 );
 
+export const journeyFixtureLocationReplacements = pgTable(
+  "journey_fixture_location_replacements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    journeyId: uuid("journey_id")
+      .notNull()
+      .references(() => journeys.id, { onDelete: "restrict" }),
+
+    fixtureLocationId: uuid("fixture_location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    replacementLocationId: uuid("replacement_location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "restrict" }),
+
+    confirmedBy: varchar("confirmed_by", { length: 120 }).notNull(),
+
+    confirmationNotes: text("confirmation_notes").notNull(),
+
+    evidenceUrl: text("evidence_url"),
+
+    confirmedAt: timestamp("confirmed_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("journey_fixture_replacements_journey_fixture_uidx").on(
+      table.journeyId,
+      table.fixtureLocationId,
+    ),
+
+    check(
+      "journey_fixture_replacements_locations_distinct",
+      sql`${table.fixtureLocationId} <> ${table.replacementLocationId}`,
+    ),
+
+    check(
+      "journey_fixture_replacements_confirmer_valid",
+      sql`length(btrim(${table.confirmedBy})) >= 2`,
+    ),
+
+    check(
+      "journey_fixture_replacements_notes_valid",
+      sql`length(btrim(${table.confirmationNotes})) >= 20`,
+    ),
+
+    check(
+      "journey_fixture_replacements_evidence_url_valid",
+      sql`
+        ${table.evidenceUrl} IS NULL
+        OR ${table.evidenceUrl} ~ '^https?://'
+      `,
+    ),
+  ],
+);
+
 export const journeySteps = pgTable(
   "journey_steps",
   {
@@ -1583,6 +1644,8 @@ export const journeySteps = pgTable(
 );
 
 export type JourneyStep = typeof journeySteps.$inferSelect;
+export type JourneyFixtureLocationReplacement =
+  typeof journeyFixtureLocationReplacements.$inferSelect;
 export type NewJourneyStep = typeof journeySteps.$inferInsert;
 
 export type JourneySegment = typeof journeySegments.$inferSelect;

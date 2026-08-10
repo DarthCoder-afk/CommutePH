@@ -141,6 +141,13 @@
       "when": 1786255606783,
       "tag": "0019_elite_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786283015876,
+      "tag": "0020_cooing_star_brand",
+      "breakpoints": true
     }
   ]
 }
