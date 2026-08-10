@@ -1,4 +1,6 @@
 import { jsonNoStore } from "@/server/http/json-no-store";
+import { canExposeDevelopmentJourneyPreviews } from "@/server/journeys/development-journey-preview-policy";
+import { searchDevelopmentJourneyPreviews } from "@/server/journeys/search-development-journey-previews";
 import { searchPublishedJourneys } from "@/server/journeys/search-published-journeys";
 
 export const runtime = "nodejs";
@@ -59,7 +61,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await searchPublishedJourneys(origin, destination);
+    const publishedJourneys = await searchPublishedJourneys(
+      origin,
+      destination,
+    );
+    const developmentPreviews =
+      publishedJourneys.length === 0 && canExposeDevelopmentJourneyPreviews()
+        ? await searchDevelopmentJourneyPreviews(origin, destination)
+        : [];
+    const result = [...publishedJourneys, ...developmentPreviews];
 
     return jsonNoStore({
       data: result,
@@ -68,6 +78,7 @@ export async function GET(request: Request) {
         destination,
         count: result.length,
         searchType: "direct-and-one-transfer",
+        includesDevelopmentPreview: developmentPreviews.length > 0,
       },
     });
   } catch (error) {

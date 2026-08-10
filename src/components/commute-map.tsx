@@ -221,6 +221,7 @@ export function CommuteMap() {
     selectedCurrentLocationJourneyOption,
     selectedOriginPlace,
     selectedPickupCandidate,
+    selectedSearchJourneyPreviewMap,
     selectPickupCandidate,
     supportedLocationsStatus,
   } = useCurrentLocationOrigin();
@@ -664,35 +665,85 @@ export function CommuteMap() {
       return;
     }
 
+    const interactivePathLayerIds: string[] = [];
+    const handlePathClick = (event: maplibregl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      const kind = feature?.properties?.kind;
+      const popupContent = document.createElement("div");
+      const popupTitle = document.createElement("strong");
+      const popupDescription = document.createElement("span");
+
+      popupTitle.className = "block text-sm text-slate-950";
+      popupTitle.textContent =
+        kind === "walking" ? "Walking connector" : "Transit connector";
+      popupDescription.className = "mt-1 block text-xs text-slate-600";
+      popupDescription.textContent = selectedSearchJourneyPreviewMap
+        ? "Schematic development line · Not a verified street route"
+        : "Verified journey path";
+      popupContent.append(popupTitle, popupDescription);
+
+      new maplibregl.Popup({ offset: 12 })
+        .setLngLat(event.lngLat)
+        .setDOMContent(popupContent)
+        .addTo(map);
+    };
+    const showPathPointer = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const hidePathPointer = () => {
+      map.getCanvas().style.cursor = "";
+    };
+
     removeSelectedJourneyLayers(map);
 
-    if (!selectedCurrentLocationJourneyMap) {
+    if (
+      !selectedCurrentLocationJourneyMap &&
+      !selectedSearchJourneyPreviewMap
+    ) {
       return;
     }
 
     try {
-      const { initialWalkingPath, publishedMap, boundsCoordinates } =
-        selectedCurrentLocationJourneyMap;
+      const publishedMap = selectedCurrentLocationJourneyMap
+        ? selectedCurrentLocationJourneyMap.publishedMap
+        : selectedSearchJourneyPreviewMap;
 
-      map.addSource(selectedJourneySourceIds.initialWalking, {
-        type: "geojson",
-        data: initialWalkingPath,
-      });
-      map.addLayer({
-        id: selectedJourneyLayerIds.initialWalking,
-        type: "line",
-        source: selectedJourneySourceIds.initialWalking,
-        layout: {
-          "line-cap": "round",
-          "line-join": "round",
-        },
-        paint: {
-          "line-color": "#d97706",
-          "line-width": 5,
-          "line-opacity": 0.95,
-          "line-dasharray": [1, 2],
-        },
-      });
+      if (!publishedMap) {
+        return;
+      }
+
+      const boundsCoordinates = selectedCurrentLocationJourneyMap
+        ? selectedCurrentLocationJourneyMap.boundsCoordinates
+        : [
+            ...publishedMap.markers.features.map(
+              (feature) => feature.geometry.coordinates,
+            ),
+            ...publishedMap.paths.features.flatMap(
+              (feature) => feature.geometry.coordinates,
+            ),
+          ];
+
+      if (selectedCurrentLocationJourneyMap) {
+        map.addSource(selectedJourneySourceIds.initialWalking, {
+          type: "geojson",
+          data: selectedCurrentLocationJourneyMap.initialWalkingPath,
+        });
+        map.addLayer({
+          id: selectedJourneyLayerIds.initialWalking,
+          type: "line",
+          source: selectedJourneySourceIds.initialWalking,
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#d97706",
+            "line-width": 5,
+            "line-opacity": 0.95,
+            "line-dasharray": [1, 2],
+          },
+        });
+      }
 
       if (publishedMap.paths.features.length > 0) {
         map.addSource(selectedJourneySourceIds.publishedPaths, {
@@ -730,6 +781,17 @@ export function CommuteMap() {
             "line-dasharray": [2, 2],
           },
         });
+
+        interactivePathLayerIds.push(
+          selectedJourneyLayerIds.publishedTransit,
+          selectedJourneyLayerIds.publishedWalking,
+        );
+
+        for (const layerId of interactivePathLayerIds) {
+          map.on("click", layerId, handlePathClick);
+          map.on("mouseenter", layerId, showPathPointer);
+          map.on("mouseleave", layerId, hidePathPointer);
+        }
       }
 
       for (const feature of publishedMap.markers.features) {
@@ -761,12 +823,21 @@ export function CommuteMap() {
         const popupContent = document.createElement("div");
         const popupTitle = document.createElement("strong");
         const popupRoles = document.createElement("span");
+        const popupVerification = document.createElement("span");
 
         popupTitle.className = "block text-sm text-slate-950";
         popupTitle.textContent = feature.properties.name;
         popupRoles.className = "mt-1 block text-xs text-slate-600";
         popupRoles.textContent = rolesLabel;
         popupContent.append(popupTitle, popupRoles);
+
+        if (selectedSearchJourneyPreviewMap) {
+          popupVerification.className =
+            "mt-2 block text-xs font-semibold text-amber-800";
+          popupVerification.textContent =
+            "Unverified local development preview";
+          popupContent.append(popupVerification);
+        }
 
         const marker = new maplibregl.Marker({
           element: markerElement,
@@ -818,10 +889,21 @@ export function CommuteMap() {
       selectedJourneyMarkersRef.current = [];
 
       if (mapRef.current === map) {
+        for (const layerId of interactivePathLayerIds) {
+          map.off("click", layerId, handlePathClick);
+          map.off("mouseenter", layerId, showPathPointer);
+          map.off("mouseleave", layerId, hidePathPointer);
+        }
+
+        map.getCanvas().style.cursor = "";
         removeSelectedJourneyLayers(map);
       }
     };
-  }, [selectedCurrentLocationJourneyMap, status]);
+  }, [
+    selectedCurrentLocationJourneyMap,
+    selectedSearchJourneyPreviewMap,
+    status,
+  ]);
 
   return (
     <div className="space-y-3">
@@ -829,7 +911,8 @@ export function CommuteMap() {
         id="commute-map"
         role="region"
         aria-label="Interactive commute map"
-        className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-lg shadow-slate-900/5"
+        tabIndex={-1}
+        className="relative scroll-mt-20 overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-lg shadow-slate-900/5 focus:ring-4 focus:ring-blue-200 focus:outline-none"
       >
         <div ref={containerRef} className="h-80 w-full sm:h-[28rem]" />
 
@@ -898,6 +981,15 @@ export function CommuteMap() {
           </div>
         ) : null}
 
+        {status === "ready" && selectedSearchJourneyPreviewMap ? (
+          <div
+            role="status"
+            className="pointer-events-none absolute top-16 left-4 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs font-bold text-amber-950 shadow-md"
+          >
+            Showing unverified draft journey stops
+          </div>
+        ) : null}
+
         {status === "ready" && nearbyPickupCandidates.length > 0 ? (
           <div className="pointer-events-none absolute bottom-8 left-4 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-md">
             <span className="flex items-center gap-2">
@@ -963,6 +1055,18 @@ export function CommuteMap() {
           ? "Current location is displayed on the map. Your precise position is kept on this page and is not saved."
           : geolocationStatusMessages[geolocationStatus]}
       </p>
+
+      {selectedSearchJourneyPreviewMap ? (
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950"
+        >
+          Numbered markers and schematic lines show the selected local
+          development preview. Solid blue connects the draft transit stops;
+          dotted gray connects walking endpoints. They are not street-following
+          or field-verified routes.
+        </p>
+      ) : null}
 
       {locationStatus === "ready" ? (
         <details className="rounded-xl border border-slate-200 bg-white p-4">

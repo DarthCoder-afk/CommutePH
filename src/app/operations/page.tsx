@@ -113,7 +113,19 @@ export default async function OperationsPage() {
           it is publicly active.
         </p>
         <div className="mt-5">
-          <OperationsLocationMap locations={catalog.locations} />
+          <OperationsLocationMap
+            locations={catalog.locations}
+            routes={catalog.routes.map((route) => ({
+              id: route.id,
+              name: route.name,
+              stops: catalog.routeStops
+                .filter((stop) => stop.transportRouteId === route.id)
+                .map((stop) => ({
+                  locationId: stop.locationId,
+                  position: stop.position,
+                })),
+            }))}
+          />
         </div>
       </section>
 

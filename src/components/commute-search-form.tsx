@@ -12,6 +12,7 @@ import { ArrowUpDown, SearchX } from "lucide-react";
 
 import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
 import { CurrentLocationJourneyOptionCard } from "@/components/current-location-journey-option-card";
+import { DevelopmentJourneyPreviewCard } from "@/components/development-journey-preview-card";
 import { JourneySummaryCard } from "@/components/journey-summary-card";
 import {
   LocationSearchInput,
@@ -31,6 +32,10 @@ import {
   buildCurrentLocationJourneyOptions,
   type CurrentLocationJourneyOption,
 } from "@/lib/journeys/build-current-location-journey-options";
+import {
+  isDevelopmentJourneyPreview,
+  type DevelopmentJourneyPreview,
+} from "@/lib/journeys/development-journey-preview";
 import type { JourneySummary } from "@/lib/journeys/journey-summary";
 import {
   isPlaceSearchOption,
@@ -38,12 +43,13 @@ import {
 } from "@/lib/locations/search-location-option";
 
 type JourneySearchSuccess = {
-  data: JourneySummary[];
+  data: (JourneySummary | DevelopmentJourneyPreview)[];
   meta: {
     origin: string;
     destination: string;
     count: number;
     searchType: "direct-and-one-transfer";
+    includesDevelopmentPreview: boolean;
   };
 };
 
@@ -136,6 +142,7 @@ export function CommuteSearchForm() {
     selectPickupCandidate,
     setSelectedDestinationPlace,
     setSelectedOriginPlace,
+    setSelectedSearchJourneyPreviewMap,
     setPickupDestination,
   } = useCurrentLocationOrigin();
   const [origin, setOrigin] = useState<SearchOriginSelection | null>(null);
@@ -144,7 +151,9 @@ export function CommuteSearchForm() {
   );
   const [originQuery, setOriginQuery] = useState("");
   const [destinationQuery, setDestinationQuery] = useState("");
-  const [journeys, setJourneys] = useState<JourneySummary[]>([]);
+  const [journeys, setJourneys] = useState<
+    (JourneySummary | DevelopmentJourneyPreview)[]
+  >([]);
   const [currentLocationJourneyOptions, setCurrentLocationJourneyOptions] =
     useState<CurrentLocationJourneyOption[]>([]);
   const [status, setStatus] = useState<SubmissionStatus>("idle");
@@ -210,6 +219,7 @@ export function CommuteSearchForm() {
       activeRequest.current = controller;
 
       setJourneys([]);
+      setSelectedSearchJourneyPreviewMap(null);
       setCurrentLocationJourneyOptions([]);
       selectCurrentLocationJourneyOption(null);
       setStatus("loading");
@@ -255,15 +265,25 @@ export function CommuteSearchForm() {
         }
 
         setJourneys(payload.data);
+        setSelectedSearchJourneyPreviewMap(
+          payload.data.find(isDevelopmentJourneyPreview)?.map ?? null,
+        );
         setCurrentLocationJourneyOptions([]);
         setStatus("success");
 
+        const developmentPreviewCount = payload.data.filter(
+          isDevelopmentJourneyPreview,
+        ).length;
+        const verifiedJourneyCount =
+          payload.data.length - developmentPreviewCount;
         const resultMessage =
           payload.data.length === 0
             ? "No verified journey connects these supported commute points yet."
-            : `${payload.data.length} verified ${
-                payload.data.length === 1 ? "journey" : "journeys"
-              } found.`;
+            : developmentPreviewCount > 0
+              ? `${developmentPreviewCount} unverified local development preview found.`
+              : `${verifiedJourneyCount} verified ${
+                  verifiedJourneyCount === 1 ? "journey" : "journeys"
+                } found.`;
 
         setMessage(
           options.resolutionMessage
@@ -280,6 +300,7 @@ export function CommuteSearchForm() {
         console.error("Failed to search journeys:", error);
 
         setJourneys([]);
+        setSelectedSearchJourneyPreviewMap(null);
         setCurrentLocationJourneyOptions([]);
         setStatus("error");
         setMessage(
@@ -293,7 +314,7 @@ export function CommuteSearchForm() {
         }
       }
     },
-    [selectCurrentLocationJourneyOption],
+    [selectCurrentLocationJourneyOption, setSelectedSearchJourneyPreviewMap],
   );
 
   useEffect(() => {
@@ -343,6 +364,7 @@ export function CommuteSearchForm() {
       setSelectedOriginPlace(null);
       setOriginQuery("Current location");
       setJourneys([]);
+      setSelectedSearchJourneyPreviewMap(null);
       setCurrentLocationJourneyOptions([]);
       setStatus("idle");
       setMessage(null);
@@ -351,7 +373,11 @@ export function CommuteSearchForm() {
     return () => {
       window.clearTimeout(applySuggestionTimeout);
     };
-  }, [currentLocationOrigin, setSelectedOriginPlace]);
+  }, [
+    currentLocationOrigin,
+    setSelectedOriginPlace,
+    setSelectedSearchJourneyPreviewMap,
+  ]);
 
   useEffect(() => {
     if (!destinationPlace) {
@@ -981,7 +1007,11 @@ export function CommuteSearchForm() {
           <ul aria-label="Journey results" className="space-y-4">
             {journeys.map((journey) => (
               <li key={journey.id}>
-                <JourneySummaryCard journey={journey} />
+                {isDevelopmentJourneyPreview(journey) ? (
+                  <DevelopmentJourneyPreviewCard journey={journey} />
+                ) : (
+                  <JourneySummaryCard journey={journey} />
+                )}
               </li>
             ))}
           </ul>

@@ -26,6 +26,7 @@ import {
   type CurrentLocationJourneyMapOverlay,
 } from "@/lib/journeys/build-current-location-journey-map-overlay";
 import type { CurrentLocationJourneyOption } from "@/lib/journeys/build-current-location-journey-options";
+import type { DevelopmentJourneyPreview } from "@/lib/journeys/development-journey-preview";
 import type { PublishedJourneyDetail } from "@/lib/journeys/published-journey-detail";
 import {
   searchPickupJourneys,
@@ -105,6 +106,10 @@ type CurrentLocationOriginContextValue = {
   selectedCurrentLocationJourneyOption: CurrentLocationJourneyOption | null;
   selectedCurrentLocationJourneyDetail: PublishedJourneyDetail | null;
   selectedCurrentLocationJourneyMap: CurrentLocationJourneyMapOverlay | null;
+  selectedSearchJourneyPreviewMap: DevelopmentJourneyPreview["map"] | null;
+  setSelectedSearchJourneyPreviewMap: (
+    map: DevelopmentJourneyPreview["map"] | null,
+  ) => void;
   selectedJourneyDetailStatus: SelectedJourneyDetailStatus;
   selectCurrentLocationJourneyOption: (
     option: CurrentLocationJourneyOption | null,
@@ -151,6 +156,8 @@ export function CurrentLocationOriginProvider({
     useState<PublishedJourneyDetail | null>(null);
   const [selectedCurrentLocationJourneyMap, setSelectedJourneyMap] =
     useState<CurrentLocationJourneyMapOverlay | null>(null);
+  const [selectedSearchJourneyPreviewMap, setSelectedSearchJourneyPreviewMap] =
+    useState<DevelopmentJourneyPreview["map"] | null>(null);
   const [selectedJourneyDetailStatus, setSelectedJourneyDetailStatus] =
     useState<SelectedJourneyDetailStatus>("idle");
 
@@ -527,6 +534,8 @@ export function CurrentLocationOriginProvider({
       selectedCurrentLocationJourneyOption,
       selectedCurrentLocationJourneyDetail,
       selectedCurrentLocationJourneyMap,
+      selectedSearchJourneyPreviewMap,
+      setSelectedSearchJourneyPreviewMap,
       selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     }),
@@ -550,6 +559,7 @@ export function CurrentLocationOriginProvider({
       selectedCurrentLocationJourneyOption,
       selectedCurrentLocationJourneyDetail,
       selectedCurrentLocationJourneyMap,
+      selectedSearchJourneyPreviewMap,
       selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     ],
