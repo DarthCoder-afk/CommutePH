@@ -6,6 +6,7 @@ import {
   geometry,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -651,6 +652,132 @@ export const routeVerificationDecisionEnum = pgEnum(
   ["approved", "rejected", "needs_follow_up"],
 );
 
+export const transportRouteCandidateSourceTypeEnum = pgEnum(
+  "transport_route_candidate_source_type",
+  ["openstreetmap", "gtfs"],
+);
+
+export const transportRouteCandidateStatusEnum = pgEnum(
+  "transport_route_candidate_status",
+  ["pending", "promoted", "rejected"],
+);
+
+export const transportRouteCandidates = pgTable(
+  "transport_route_candidates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    sourceType: transportRouteCandidateSourceTypeEnum("source_type").notNull(),
+
+    sourceExternalId: varchar("source_external_id", {
+      length: 200,
+    }).notNull(),
+
+    sourceUrl: text("source_url").notNull(),
+
+    city: varchar("city", { length: 80 }).notNull(),
+
+    name: varchar("name", { length: 180 }).notNull(),
+
+    rawMode: varchar("raw_mode", { length: 80 }).notNull(),
+
+    operator: varchar("operator", { length: 160 }),
+
+    reference: varchar("reference", { length: 120 }),
+
+    originName: varchar("origin_name", { length: 180 }),
+
+    destinationName: varchar("destination_name", { length: 180 }),
+
+    via: varchar("via", { length: 180 }),
+
+    rawTags: jsonb("raw_tags").$type<Record<string, string>>().notNull(),
+
+    status: transportRouteCandidateStatusEnum("status")
+      .default("pending")
+      .notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("transport_route_candidates_source_uidx").on(
+      table.sourceType,
+      table.sourceExternalId,
+    ),
+    index("transport_route_candidates_city_status_idx").on(
+      table.city,
+      table.status,
+    ),
+    check(
+      "transport_route_candidates_name_not_blank",
+      sql`length(btrim(${table.name})) > 0`,
+    ),
+    check(
+      "transport_route_candidates_mode_not_blank",
+      sql`length(btrim(${table.rawMode})) > 0`,
+    ),
+    check(
+      "transport_route_candidates_source_url_valid",
+      sql`${table.sourceUrl} ~ '^https?://'`,
+    ),
+  ],
+);
+
+export const transportRouteCandidateStops = pgTable(
+  "transport_route_candidate_stops",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    transportRouteCandidateId: uuid("transport_route_candidate_id")
+      .notNull()
+      .references(() => transportRouteCandidates.id, { onDelete: "cascade" }),
+
+    sourceExternalId: varchar("source_external_id", {
+      length: 200,
+    }).notNull(),
+
+    rawRole: varchar("raw_role", { length: 80 }),
+
+    mappedName: varchar("mapped_name", { length: 180 }),
+
+    locationId: uuid("location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
+
+    position: integer("position").notNull(),
+
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("transport_route_candidate_stops_position_uidx").on(
+      table.transportRouteCandidateId,
+      table.position,
+    ),
+    index("transport_route_candidate_stops_location_idx").on(table.locationId),
+    check(
+      "transport_route_candidate_stops_position_positive",
+      sql`${table.position} >= 1`,
+    ),
+  ],
+);
+
 export const transportRoutes = pgTable(
   "transport_routes",
   {
@@ -711,6 +838,54 @@ export const transportRoutes = pgTable(
           AND ${table.lastVerifiedAt} IS NOT NULL
         )
       `,
+    ),
+  ],
+);
+
+export const transportRouteCandidatePromotions = pgTable(
+  "transport_route_candidate_promotions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    transportRouteCandidateId: uuid("transport_route_candidate_id")
+      .notNull()
+      .references(() => transportRouteCandidates.id, { onDelete: "restrict" }),
+
+    transportRouteId: uuid("transport_route_id")
+      .notNull()
+      .references(() => transportRoutes.id, { onDelete: "restrict" }),
+
+    promotedBy: varchar("promoted_by", { length: 120 }).notNull(),
+
+    notes: text("notes").notNull(),
+
+    evidenceUrl: text("evidence_url"),
+
+    promotedAt: timestamp("promoted_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("transport_route_candidate_promotions_candidate_uidx").on(
+      table.transportRouteCandidateId,
+    ),
+    uniqueIndex("transport_route_candidate_promotions_route_uidx").on(
+      table.transportRouteId,
+    ),
+    check(
+      "transport_route_candidate_promotions_reviewer_valid",
+      sql`length(btrim(${table.promotedBy})) >= 2`,
+    ),
+    check(
+      "transport_route_candidate_promotions_notes_valid",
+      sql`length(btrim(${table.notes})) >= 20`,
+    ),
+    check(
+      "transport_route_candidate_promotions_evidence_url_valid",
+      sql`${table.evidenceUrl} IS NULL OR ${table.evidenceUrl} ~ '^https?://'`,
     ),
   ],
 );

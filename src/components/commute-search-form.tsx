@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { ArrowUpDown, SearchX } from "lucide-react";
+import { ArrowUpDown, ChevronDown, MapPin, SearchX } from "lucide-react";
 
 import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
 import { CurrentLocationJourneyOptionCard } from "@/components/current-location-journey-option-card";
@@ -875,44 +875,63 @@ export function CommuteSearchForm() {
 
         {origin?.type === "CURRENT_LOCATION" &&
         nearbyDevelopmentPickupStatus === "ready" ? (
-          <section
+          <details
             aria-labelledby="nearby-mapped-stops-heading"
-            className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+            className="group rounded-xl border border-amber-200 bg-amber-50 open:shadow-sm"
           >
-            <h3
-              id="nearby-mapped-stops-heading"
-              className="text-sm font-bold text-amber-950"
-            >
-              Nearby mapped stops — unverified
-            </h3>
-            <p className="mt-1 text-xs leading-5 text-amber-900">
-              These imported OpenStreetMap or GTFS points are shown for local
-              development only. They cannot be used for public directions until
-              their identity, pickup access, and route connections are verified.
-            </p>
-
-            <ol className="mt-3 space-y-2">
-              {nearbyDevelopmentPickupCandidates.map((candidate) => (
-                <li
-                  key={candidate.location.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-amber-100 bg-white p-3 text-sm"
+            <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-3 py-2.5 marker:hidden">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                <MapPin aria-hidden="true" className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  id="nearby-mapped-stops-heading"
+                  className="block text-sm font-bold text-amber-950"
                 >
-                  <span>
-                    <span className="block font-semibold text-slate-950">
-                      {candidate.location.name}
+                  {nearbyDevelopmentPickupCandidates.length} mapped{" "}
+                  {nearbyDevelopmentPickupCandidates.length === 1
+                    ? "stop"
+                    : "stops"}{" "}
+                  nearby
+                </span>
+                <span className="block truncate text-xs text-amber-800">
+                  Unverified development candidates
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className="size-4 shrink-0 text-amber-800 transition group-open:rotate-180"
+              />
+            </summary>
+
+            <div className="border-t border-amber-200 px-3 pt-2 pb-3">
+              <p className="text-xs leading-5 text-amber-900">
+                These mapped points cannot be used for public directions until
+                their identity, pickup access, and routes are verified.
+              </p>
+
+              <ol className="mt-2 max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                {nearbyDevelopmentPickupCandidates.map((candidate) => (
+                  <li
+                    key={candidate.location.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-amber-100 bg-white px-2.5 py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold text-slate-950">
+                        {candidate.location.name}
+                      </span>
+                      <span className="block truncate text-xs text-slate-600">
+                        {candidate.location.kind} · {candidate.location.city}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-xs text-slate-600">
-                      {candidate.location.kind} · {candidate.location.city} ·{" "}
-                      {candidate.location.sourceType.toUpperCase()}
+                    <span className="shrink-0 text-xs font-semibold text-amber-900">
+                      {formatApproximateDistance(candidate.distanceMeters)}
                     </span>
-                  </span>
-                  <span className="shrink-0 text-xs font-semibold text-amber-900">
-                    {formatApproximateDistance(candidate.distanceMeters)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </details>
         ) : null}
 
         {origin?.type === "CURRENT_LOCATION" &&

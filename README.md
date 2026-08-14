@@ -144,6 +144,43 @@ pnpm db:check-draft-journey
 Imported stop candidates can be reviewed during development, but must remain
 inactive and unverified until the required evidence has been approved.
 
+Fetch and import city-wide OpenStreetMap candidates without depending on every
+stop having an `addr:city` tag:
+
+```bash
+pnpm db:fetch-osm-provisional-stops -- /tmp/pasig-osm-stops.json --city Pasig
+pnpm db:import-provisional-stops -- /tmp/pasig-osm-stops.json
+pnpm db:sync-location-duplicate-reviews
+```
+
+The fetch step uses the city's mapped administrative boundary. Importing is
+idempotent by source ID: existing provisional records are updated, while active
+or verified records are preserved. Unnamed mapped stops receive an explicit
+provisional review label rather than an invented public identity.
+
+Mapped public-transport relations can also be staged as route candidates. Run
+the stop imports for every city crossed by the routes first so more relation
+members can be linked to stored locations.
+
+```bash
+pnpm db:fetch-osm-provisional-routes -- /tmp/pasig-osm-routes.json --city Pasig
+pnpm db:import-provisional-routes -- /tmp/pasig-osm-routes.json
+```
+
+Route candidates remain private and cannot be used by public journey search.
+After manually reviewing a candidate and its linked stop order, prepare a JSON
+promotion input and run the guarded command without `--apply` first:
+
+```bash
+pnpm db:promote-route-candidate -- ./reviewed-route-promotion.json
+pnpm db:promote-route-candidate -- ./reviewed-route-promotion.json --apply
+```
+
+Promotion creates only an inactive, unverified route and inactive schedule. It
+also writes an immutable audit record. The resulting draft still requires the
+normal location, route, schedule, and journey evidence workflow before it can
+become public.
+
 The operations area is available at
 [http://localhost:3000/operations](http://localhost:3000/operations) when
 `OPERATIONS_ACCESS_TOKEN` is configured.

@@ -89,6 +89,7 @@ export default async function OperationsPage() {
             ).length,
           ],
           ["Transport routes", catalog.routes.length],
+          ["Mapped route candidates", catalog.routeCandidates.length],
           [
             "Draft journeys",
             catalog.journeys.filter((journey) => !journey.isActive).length,
@@ -127,6 +128,135 @@ export default async function OperationsPage() {
             }))}
           />
         </div>
+      </section>
+
+      <section
+        aria-labelledby="operations-route-candidates-heading"
+        className="mt-12"
+      >
+        <h2
+          id="operations-route-candidates-heading"
+          className="text-2xl font-bold"
+        >
+          Mapped route candidates
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Source relations are discovery leads only. Their member order, mode,
+          signboard, stop access, and current operation require review before a
+          stored transport route can be created.
+        </p>
+
+        {catalog.routeCandidates.length === 0 ? (
+          <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+            No mapped route candidates have been imported.
+          </p>
+        ) : (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {catalog.routeCandidates.map((candidate) => {
+              const stops = catalog.routeCandidateStops.filter(
+                (stop) => stop.transportRouteCandidateId === candidate.id,
+              );
+              const linkedStopCount = stops.filter(
+                (stop) => stop.locationId !== null,
+              ).length;
+
+              return (
+                <details
+                  key={candidate.id}
+                  className="group rounded-2xl border border-amber-200 bg-white open:shadow-sm"
+                >
+                  <summary className="cursor-pointer list-none p-5 marker:hidden">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-bold text-slate-950">
+                          {candidate.name}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {candidate.rawMode.replaceAll("_", " ")} ·{" "}
+                          {candidate.operator ?? "Operator unknown"}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {candidate.originName ?? "Unknown origin"} →{" "}
+                          {candidate.destinationName ?? "Unknown destination"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                        {candidate.status}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs font-medium text-amber-800">
+                      {linkedStopCount}/{stops.length} member stops linked ·
+                      Click to inspect
+                    </p>
+                  </summary>
+
+                  <div className="border-t border-amber-100 px-5 pt-4 pb-5">
+                    <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-slate-500">Reference</dt>
+                        <dd className="font-medium">
+                          {candidate.reference ?? "Unknown"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-slate-500">Via</dt>
+                        <dd className="font-medium">
+                          {candidate.via ?? "Unknown"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <a
+                      href={candidate.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex text-sm font-semibold text-blue-700 underline-offset-4 hover:underline"
+                    >
+                      Open source relation
+                    </a>
+
+                    {stops.length === 0 ? (
+                      <p className="mt-4 text-sm text-slate-500">
+                        The mapped relation has no ordered stop members.
+                      </p>
+                    ) : (
+                      <ol className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+                        {stops.map((stop) => {
+                          const linkedLocation = stop.locationId
+                            ? locationsById.get(stop.locationId)
+                            : null;
+
+                          return (
+                            <li
+                              key={stop.id}
+                              className="flex gap-3 rounded-xl bg-slate-50 p-3 text-sm"
+                            >
+                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+                                {stop.position}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold">
+                                  {linkedLocation?.name ??
+                                    stop.mappedName ??
+                                    stop.sourceExternalId}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {stop.rawRole ?? "role missing"} ·{" "}
+                                  {linkedLocation
+                                    ? "linked to imported stop"
+                                    : "unresolved member"}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="operations-routes-heading" className="mt-12">
