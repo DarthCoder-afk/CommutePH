@@ -20,6 +20,39 @@ export const developmentMapStyle = {
   ],
 } satisfies StyleSpecification;
 
+export function parsePublicMapStyleUrl(
+  configuredValue: string | undefined,
+  nodeEnvironment: string | undefined,
+) {
+  const configuredUrl = configuredValue?.trim();
+
+  if (!configuredUrl) {
+    if (nodeEnvironment === "production") {
+      throw new Error(
+        "NEXT_PUBLIC_MAP_STYLE_URL is required for a production build.",
+      );
+    }
+
+    return null;
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(configuredUrl);
+  } catch {
+    throw new Error("NEXT_PUBLIC_MAP_STYLE_URL must be a valid URL.");
+  }
+
+  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+    throw new Error(
+      "NEXT_PUBLIC_MAP_STYLE_URL must use the https: or http: protocol.",
+    );
+  }
+
+  return configuredUrl;
+}
+
 export function resolveMapStyle(
   configuredValue: string | undefined,
   nodeEnvironment: string | undefined,
@@ -27,7 +60,7 @@ export function resolveMapStyle(
   const configuredUrl = configuredValue?.trim();
 
   if (configuredUrl) {
-    return configuredUrl;
+    return parsePublicMapStyleUrl(configuredUrl, nodeEnvironment);
   }
 
   return nodeEnvironment === "development" ? developmentMapStyle : null;

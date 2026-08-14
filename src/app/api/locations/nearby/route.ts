@@ -5,6 +5,7 @@ import {
   nearbyLocationMaximumLimit,
   nearbyLocationMaximumRadiusMeters,
   searchNearbyActiveLocations,
+  searchNearbyDevelopmentLocations,
 } from "@/server/locations/search-nearby-locations";
 
 export const runtime = "nodejs";
@@ -37,6 +38,9 @@ export async function GET(request: Request) {
     searchParams.get("limit"),
     nearbyLocationDefaultLimit,
   );
+  const includeDevelopmentCandidates =
+    searchParams.get("includeDevelopmentCandidates") === "true" &&
+    process.env.NODE_ENV === "development";
 
   if (
     longitude === null ||
@@ -82,17 +86,29 @@ export async function GET(request: Request) {
   }
 
   try {
-    const candidates = await searchNearbyActiveLocations({
-      longitude,
-      latitude,
-      radiusMeters,
-      limit,
-    });
+    const [candidates, developmentCandidates] = await Promise.all([
+      searchNearbyActiveLocations({
+        longitude,
+        latitude,
+        radiusMeters,
+        limit,
+      }),
+      includeDevelopmentCandidates
+        ? searchNearbyDevelopmentLocations({
+            longitude,
+            latitude,
+            radiusMeters,
+            limit,
+          })
+        : Promise.resolve([]),
+    ]);
 
     return jsonNoStore({
       data: candidates,
+      developmentData: developmentCandidates,
       meta: {
         count: candidates.length,
+        developmentCount: developmentCandidates.length,
         radiusMeters,
       },
     });

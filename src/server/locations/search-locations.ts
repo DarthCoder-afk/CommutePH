@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 
 import { db } from "@/server/db";
 import { locations } from "@/server/db/schema";
@@ -56,4 +56,46 @@ export async function searchActiveLocations(query: string) {
     longitude: coordinates.x,
     latitude: coordinates.y,
   }));
+}
+
+export async function findActiveLocationsBySlugs(slugs: readonly string[]) {
+  if (slugs.length === 0) {
+    return [];
+  }
+
+  const locationRows = await db
+    .select({
+      id: locations.id,
+      name: locations.name,
+      slug: locations.slug,
+      kind: locations.kind,
+      description: locations.description,
+      city: locations.city,
+      area: locations.area,
+      coordinates: locations.coordinates,
+    })
+    .from(locations)
+    .where(
+      and(
+        eq(locations.isActive, true),
+        eq(locations.verificationStatus, "verified"),
+        inArray(locations.slug, [...slugs]),
+      ),
+    );
+
+  const locationsBySlug = new Map(
+    locationRows.map(({ coordinates, ...location }) => [
+      location.slug,
+      {
+        ...location,
+        longitude: coordinates.x,
+        latitude: coordinates.y,
+      },
+    ]),
+  );
+
+  return slugs.flatMap((slug) => {
+    const location = locationsBySlug.get(slug);
+    return location ? [location] : [];
+  });
 }

@@ -36,6 +36,10 @@ import {
   isDevelopmentJourneyPreview,
   type DevelopmentJourneyPreview,
 } from "@/lib/journeys/development-journey-preview";
+import {
+  buildJourneySearchUrl,
+  readJourneySearchSlugs,
+} from "@/lib/journeys/journey-search-url";
 import type { JourneySummary } from "@/lib/journeys/journey-summary";
 import {
   isPlaceSearchOption,
@@ -58,6 +62,10 @@ type JourneySearchFailure = {
     code: string;
     message: string;
   };
+};
+
+type ExactLocationsResponse = {
+  data: LocationOption[];
 };
 
 type SubmissionStatus = "idle" | "loading" | "success" | "notice" | "error";
@@ -130,6 +138,8 @@ export function CommuteSearchForm() {
     clearCurrentLocationOrigin,
     currentLocationOrigin,
     geolocationStatus,
+    nearbyDevelopmentPickupCandidates,
+    nearbyDevelopmentPickupStatus,
     nearbyPickupCandidates,
     pickupJourneyMatches,
     pickupJourneySearchStatus,
@@ -141,6 +151,7 @@ export function CommuteSearchForm() {
     selectedPickupCandidate,
     selectPickupCandidate,
     setSelectedDestinationPlace,
+    setSelectedJourneySegmentPosition,
     setSelectedOriginPlace,
     setSelectedSearchJourneyPreviewMap,
     setPickupDestination,
@@ -211,6 +222,7 @@ export function CommuteSearchForm() {
       options: {
         persist?: boolean;
         resolutionMessage?: string;
+        urlMode?: "push" | "replace" | "none";
       } = {},
     ) => {
       activeRequest.current?.abort();
@@ -219,6 +231,7 @@ export function CommuteSearchForm() {
       activeRequest.current = controller;
 
       setJourneys([]);
+      setSelectedJourneySegmentPosition(null);
       setSelectedSearchJourneyPreviewMap(null);
       setCurrentLocationJourneyOptions([]);
       selectCurrentLocationJourneyOption(null);
@@ -264,7 +277,22 @@ export function CommuteSearchForm() {
           );
         }
 
+        if (options.urlMode !== "none") {
+          const nextUrl = buildJourneySearchUrl(window.location.href, {
+            origin: selectedOrigin.slug,
+            destination: selectedDestination.slug,
+          });
+          const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+          if (nextUrl !== currentUrl) {
+            const method =
+              options.urlMode === "replace" ? "replaceState" : "pushState";
+            window.history[method](null, "", nextUrl);
+          }
+        }
+
         setJourneys(payload.data);
+        setSelectedJourneySegmentPosition(null);
         setSelectedSearchJourneyPreviewMap(
           payload.data.find(isDevelopmentJourneyPreview)?.map ?? null,
         );
@@ -300,6 +328,7 @@ export function CommuteSearchForm() {
         console.error("Failed to search journeys:", error);
 
         setJourneys([]);
+        setSelectedJourneySegmentPosition(null);
         setSelectedSearchJourneyPreviewMap(null);
         setCurrentLocationJourneyOptions([]);
         setStatus("error");
@@ -314,17 +343,78 @@ export function CommuteSearchForm() {
         }
       }
     },
-    [selectCurrentLocationJourneyOption, setSelectedSearchJourneyPreviewMap],
+    [
+      selectCurrentLocationJourneyOption,
+      setSelectedJourneySegmentPosition,
+      setSelectedSearchJourneyPreviewMap,
+    ],
   );
 
   useEffect(() => {
-    const persistedSearch = readPersistedSearch();
+    const controller = new AbortController();
 
-    if (!persistedSearch) {
-      return;
-    }
+    async function restoreSearch() {
+      const currentSearchParams = new URLSearchParams(window.location.search);
+      const hasSharedSearchParameters =
+        currentSearchParams.has("origin") ||
+        currentSearchParams.has("destination");
+      const sharedSearch = readJourneySearchSlugs(window.location.search);
 
-    const restoreTimeout = window.setTimeout(() => {
+      if (hasSharedSearchParameters && !sharedSearch) {
+        setStatus("notice");
+        setMessage("This shared commute link has invalid journey endpoints.");
+        return;
+      }
+
+      if (sharedSearch) {
+        const searchParams = new URLSearchParams({
+          slugs: `${sharedSearch.origin},${sharedSearch.destination}`,
+        });
+        const response = await fetch(
+          `/api/locations?${searchParams.toString()}`,
+          { signal: controller.signal },
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to restore the shared commute search.");
+        }
+
+        const payload = (await response.json()) as ExactLocationsResponse;
+        const restoredOrigin = payload.data.find(
+          (location) => location.slug === sharedSearch.origin,
+        );
+        const restoredDestination = payload.data.find(
+          (location) => location.slug === sharedSearch.destination,
+        );
+
+        if (!restoredOrigin || !restoredDestination) {
+          setStatus("notice");
+          setMessage(
+            "This shared commute link uses a location that is no longer publicly available.",
+          );
+          return;
+        }
+
+        setOrigin({ type: "CURATED_LOCATION", location: restoredOrigin });
+        setDestination(restoredDestination);
+        setSelectedOriginPlace(null);
+        setSelectedDestinationPlace(null);
+        setPickupDestination(restoredDestination);
+        setOriginQuery(restoredOrigin.name);
+        setDestinationQuery(restoredDestination.name);
+
+        await searchJourneys(restoredOrigin, restoredDestination, {
+          urlMode: "none",
+        });
+        return;
+      }
+
+      const persistedSearch = readPersistedSearch();
+
+      if (!persistedSearch) {
+        return;
+      }
+
       setOrigin({
         type: "CURATED_LOCATION",
         location: persistedSearch.origin,
@@ -336,11 +426,27 @@ export function CommuteSearchForm() {
       setOriginQuery(persistedSearch.origin.name);
       setDestinationQuery(persistedSearch.destination.name);
 
-      void searchJourneys(persistedSearch.origin, persistedSearch.destination);
-    }, 0);
+      await searchJourneys(
+        persistedSearch.origin,
+        persistedSearch.destination,
+        {
+          urlMode: "replace",
+        },
+      );
+    }
+
+    void restoreSearch().catch((error) => {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      console.error("Failed to restore commute search:", error);
+      setStatus("error");
+      setMessage("The saved commute search could not be restored.");
+    });
 
     return () => {
-      window.clearTimeout(restoreTimeout);
+      controller.abort();
       activeRequest.current?.abort();
     };
   }, [
@@ -358,12 +464,18 @@ export function CommuteSearchForm() {
     activeRequest.current?.abort();
     activeRequest.current = null;
     window.sessionStorage.removeItem(persistedSearchKey);
+    window.history.replaceState(
+      null,
+      "",
+      buildJourneySearchUrl(window.location.href, null),
+    );
 
     const applySuggestionTimeout = window.setTimeout(() => {
       setOrigin(currentLocationOrigin.origin);
       setSelectedOriginPlace(null);
       setOriginQuery("Current location");
       setJourneys([]);
+      setSelectedJourneySegmentPosition(null);
       setSelectedSearchJourneyPreviewMap(null);
       setCurrentLocationJourneyOptions([]);
       setStatus("idle");
@@ -375,6 +487,7 @@ export function CommuteSearchForm() {
     };
   }, [
     currentLocationOrigin,
+    setSelectedJourneySegmentPosition,
     setSelectedOriginPlace,
     setSelectedSearchJourneyPreviewMap,
   ]);
@@ -418,8 +531,15 @@ export function CommuteSearchForm() {
     activeRequest.current = null;
 
     window.sessionStorage.removeItem(persistedSearchKey);
+    window.history.replaceState(
+      null,
+      "",
+      buildJourneySearchUrl(window.location.href, null),
+    );
 
     setJourneys([]);
+    setSelectedJourneySegmentPosition(null);
+    setSelectedSearchJourneyPreviewMap(null);
     setCurrentLocationJourneyOptions([]);
     selectCurrentLocationJourneyOption(null);
     setStatus("idle");
@@ -742,11 +862,57 @@ export function CommuteSearchForm() {
               : pickupSearchStatus === "error"
                 ? "Supported pickup points could not be loaded. Please refresh and try again."
                 : pickupSearchStatus === "empty"
-                  ? "No supported commute pickup point was found near your current location."
+                  ? nearbyDevelopmentPickupStatus === "loading"
+                    ? "No verified pickup point was found nearby. Checking mapped transit stops…"
+                    : nearbyDevelopmentPickupStatus === "ready"
+                      ? `No verified pickup point was found, but ${nearbyDevelopmentPickupCandidates.length} unverified mapped ${nearbyDevelopmentPickupCandidates.length === 1 ? "stop was" : "stops were"} found nearby.`
+                      : "No verified supported pickup point was found near your current location."
                   : `${nearbyPickupCandidates.length} nearby pickup ${
                       nearbyPickupCandidates.length === 1 ? "point" : "points"
                     } found within ${pickupSearchRadiusMeters / 1_000} km.`}
           </p>
+        ) : null}
+
+        {origin?.type === "CURRENT_LOCATION" &&
+        nearbyDevelopmentPickupStatus === "ready" ? (
+          <section
+            aria-labelledby="nearby-mapped-stops-heading"
+            className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+          >
+            <h3
+              id="nearby-mapped-stops-heading"
+              className="text-sm font-bold text-amber-950"
+            >
+              Nearby mapped stops — unverified
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-amber-900">
+              These imported OpenStreetMap or GTFS points are shown for local
+              development only. They cannot be used for public directions until
+              their identity, pickup access, and route connections are verified.
+            </p>
+
+            <ol className="mt-3 space-y-2">
+              {nearbyDevelopmentPickupCandidates.map((candidate) => (
+                <li
+                  key={candidate.location.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-amber-100 bg-white p-3 text-sm"
+                >
+                  <span>
+                    <span className="block font-semibold text-slate-950">
+                      {candidate.location.name}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-600">
+                      {candidate.location.kind} · {candidate.location.city} ·{" "}
+                      {candidate.location.sourceType.toUpperCase()}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-amber-900">
+                    {formatApproximateDistance(candidate.distanceMeters)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
         ) : null}
 
         {origin?.type === "CURRENT_LOCATION" &&

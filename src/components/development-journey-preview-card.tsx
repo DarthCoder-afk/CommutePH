@@ -1,17 +1,20 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowRight,
   BusFront,
+  Check,
   CircleAlert,
   Clock3,
   Coins,
   Footprints,
   MapPinned,
+  Share2,
   X,
 } from "lucide-react";
 
+import { useCurrentLocationOrigin } from "@/components/current-location-origin-context";
 import type { DevelopmentJourneyPreview } from "@/lib/journeys/development-journey-preview";
 
 type DevelopmentJourneyPreviewCardProps = {
@@ -28,14 +31,29 @@ export function DevelopmentJourneyPreviewCard({
   journey,
 }: DevelopmentJourneyPreviewCardProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+  const { setSelectedJourneySegmentPosition } = useCurrentLocationOrigin();
 
-  function showJourneyOnMap() {
+  function showJourneyOnMap(segmentPosition: number | null = null) {
+    setSelectedJourneySegmentPosition(segmentPosition);
     dialogRef.current?.close();
 
     const mapRegion = document.getElementById("commute-map");
 
     mapRegion?.scrollIntoView({ behavior: "smooth", block: "center" });
     window.setTimeout(() => mapRegion?.focus({ preventScroll: true }), 400);
+  }
+
+  async function copyJourneyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 2_000);
+    } catch {
+      setCopyStatus("error");
+    }
   }
 
   return (
@@ -83,7 +101,7 @@ export function DevelopmentJourneyPreviewCard({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={showJourneyOnMap}
+            onClick={() => showJourneyOnMap()}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 focus:ring-4 focus:ring-blue-100 focus:outline-none"
           >
             <MapPinned aria-hidden="true" className="size-4" />
@@ -213,6 +231,15 @@ export function DevelopmentJourneyPreviewCard({
                       </p>
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => showJourneyOnMap(segment.position)}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 focus:ring-4 focus:ring-blue-100 focus:outline-none"
+                  >
+                    <MapPinned aria-hidden="true" className="size-3.5" />
+                    Show step {segment.position} on map
+                  </button>
                 </div>
               </li>
             ))}
@@ -239,10 +266,29 @@ export function DevelopmentJourneyPreviewCard({
           </ol>
         </div>
 
-        <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
+        <footer className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)] gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
           <button
             type="button"
-            onClick={showJourneyOnMap}
+            onClick={() => void copyJourneyLink()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-800 transition hover:bg-slate-50 focus:ring-4 focus:ring-slate-200 focus:outline-none"
+          >
+            {copyStatus === "copied" ? (
+              <Check aria-hidden="true" className="size-5 text-emerald-700" />
+            ) : (
+              <Share2 aria-hidden="true" className="size-5" />
+            )}
+            <span className="hidden sm:inline">
+              {copyStatus === "copied"
+                ? "Copied"
+                : copyStatus === "error"
+                  ? "Copy failed"
+                  : "Copy link"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => showJourneyOnMap()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white transition hover:bg-blue-800 focus:ring-4 focus:ring-blue-200 focus:outline-none"
           >
             <MapPinned aria-hidden="true" className="size-5" />

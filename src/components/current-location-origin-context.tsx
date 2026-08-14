@@ -13,6 +13,7 @@ import {
 
 import type { LocationOption } from "@/components/location-search-input";
 import type { PlaceSearchOption } from "@/lib/locations/search-location-option";
+import type { NearbyDevelopmentLocation } from "@/lib/locations/nearby-development-location";
 import { pickupSearchRadiusMeters } from "@/config/pickup-search";
 import { findNearbyLocations } from "@/lib/geolocation/find-nearest-location";
 import {
@@ -55,6 +56,10 @@ type LocationSearchResponse = {
   data: LocationOption[];
 };
 
+type NearbyDevelopmentLocationResponse = {
+  developmentData: NearbyDevelopmentLocation[];
+};
+
 type JourneySearchResponse = {
   data: JourneySummary[];
 };
@@ -92,6 +97,9 @@ type CurrentLocationOriginContextValue = {
   nearbyPickupCandidates: ReturnType<
     typeof findNearbyLocations<LocationOption>
   >;
+  nearbyDevelopmentPickupCandidates: readonly NearbyDevelopmentLocation[];
+  nearbyDevelopmentPickupStatus:
+    "idle" | "loading" | "ready" | "empty" | "error";
   selectedPickupCandidate:
     ReturnType<typeof findNearbyLocations<LocationOption>>[number] | null;
   selectPickupCandidate: (locationId: string) => void;
@@ -110,6 +118,8 @@ type CurrentLocationOriginContextValue = {
   setSelectedSearchJourneyPreviewMap: (
     map: DevelopmentJourneyPreview["map"] | null,
   ) => void;
+  selectedJourneySegmentPosition: number | null;
+  setSelectedJourneySegmentPosition: (position: number | null) => void;
   selectedJourneyDetailStatus: SelectedJourneyDetailStatus;
   selectCurrentLocationJourneyOption: (
     option: CurrentLocationJourneyOption | null,
@@ -139,6 +149,11 @@ export function CurrentLocationOriginProvider({
       status: "loading",
       locations: [],
     });
+  const [nearbyDevelopmentPickupState, setNearbyDevelopmentPickupState] =
+    useState<{
+      status: "idle" | "loading" | "ready" | "empty" | "error";
+      candidates: NearbyDevelopmentLocation[];
+    }>({ status: "idle", candidates: [] });
   const geolocationRequestRef = useRef(0);
   const [selectedPickupLocationId, setSelectedPickupLocationId] = useState<
     string | null
@@ -158,6 +173,8 @@ export function CurrentLocationOriginProvider({
     useState<CurrentLocationJourneyMapOverlay | null>(null);
   const [selectedSearchJourneyPreviewMap, setSelectedSearchJourneyPreviewMap] =
     useState<DevelopmentJourneyPreview["map"] | null>(null);
+  const [selectedJourneySegmentPosition, setSelectedJourneySegmentPosition] =
+    useState<number | null>(null);
   const [selectedJourneyDetailStatus, setSelectedJourneyDetailStatus] =
     useState<SelectedJourneyDetailStatus>("idle");
 
@@ -267,6 +284,78 @@ export function CurrentLocationOriginProvider({
         : nearbyPickupCandidates.length > 0
           ? "ready"
           : "empty";
+
+  useEffect(() => {
+    if (!currentLocationOrigin) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let disposed = false;
+    const searchParams = new URLSearchParams({
+      longitude: String(currentLocationOrigin.origin.longitude),
+      latitude: String(currentLocationOrigin.origin.latitude),
+      radiusMeters: String(pickupSearchRadiusMeters),
+      limit: "5",
+      includeDevelopmentCandidates: "true",
+    });
+
+    queueMicrotask(() => {
+      if (!disposed) {
+        setNearbyDevelopmentPickupState({
+          status: "loading",
+          candidates: [],
+        });
+      }
+    });
+
+    void fetch(`/api/locations/nearby?${searchParams.toString()}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Nearby mapped-stop search failed with status ${response.status}.`,
+          );
+        }
+
+        return (await response.json()) as NearbyDevelopmentLocationResponse;
+      })
+      .then((payload) => {
+        if (disposed) {
+          return;
+        }
+
+        if (!Array.isArray(payload.developmentData)) {
+          throw new Error("Nearby mapped-stop search returned invalid data.");
+        }
+
+        setNearbyDevelopmentPickupState({
+          status: payload.developmentData.length > 0 ? "ready" : "empty",
+          candidates: payload.developmentData,
+        });
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        if (disposed) {
+          return;
+        }
+
+        console.error("Failed to load nearby mapped stops:", error);
+        setNearbyDevelopmentPickupState({
+          status: "error",
+          candidates: [],
+        });
+      });
+
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [currentLocationOrigin]);
 
   const pickupCandidatesForSelection = useMemo(() => {
     if (!pickupDestination) {
@@ -524,6 +613,14 @@ export function CurrentLocationOriginProvider({
       activeSupportedLocations: supportedLocations.locations,
       supportedLocationsStatus: supportedLocations.status,
       nearbyPickupCandidates,
+      nearbyDevelopmentPickupCandidates:
+        currentLocationOrigin === null
+          ? []
+          : nearbyDevelopmentPickupState.candidates,
+      nearbyDevelopmentPickupStatus:
+        currentLocationOrigin === null
+          ? "idle"
+          : nearbyDevelopmentPickupState.status,
       selectedPickupCandidate,
       selectPickupCandidate,
       pickupSearchStatus,
@@ -536,6 +633,8 @@ export function CurrentLocationOriginProvider({
       selectedCurrentLocationJourneyMap,
       selectedSearchJourneyPreviewMap,
       setSelectedSearchJourneyPreviewMap,
+      selectedJourneySegmentPosition,
+      setSelectedJourneySegmentPosition,
       selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     }),
@@ -550,6 +649,7 @@ export function CurrentLocationOriginProvider({
       selectedDestinationPlace,
       supportedLocations,
       nearbyPickupCandidates,
+      nearbyDevelopmentPickupState,
       selectedPickupCandidate,
       selectPickupCandidate,
       pickupSearchStatus,
@@ -560,6 +660,7 @@ export function CurrentLocationOriginProvider({
       selectedCurrentLocationJourneyDetail,
       selectedCurrentLocationJourneyMap,
       selectedSearchJourneyPreviewMap,
+      selectedJourneySegmentPosition,
       selectedJourneyDetailStatus,
       selectCurrentLocationJourneyOption,
     ],

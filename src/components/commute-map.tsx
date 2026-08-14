@@ -12,6 +12,7 @@ import {
   isGeolocationFailure,
 } from "@/lib/geolocation/geolocation-status";
 import { formatApproximateDistance } from "@/lib/geolocation/format-distance";
+import type { NearbyDevelopmentLocation } from "@/lib/locations/nearby-development-location";
 
 type MapStatus = "loading" | "ready" | "error";
 type LocationStatus = "loading" | "ready" | "empty" | "error";
@@ -19,6 +20,7 @@ type LocationStatus = "loading" | "ready" | "empty" | "error";
 const initialCenter: [number, number] = [121.0244, 14.5674];
 const selectedJourneyLayerIds = {
   initialWalking: "selected-journey-initial-walking",
+  selectedSegment: "selected-journey-segment-highlight",
   publishedWalking: "selected-journey-published-walking",
   publishedTransit: "selected-journey-published-transit",
 } as const;
@@ -206,12 +208,33 @@ function createCurrentLocationPopupContent() {
   return content;
 }
 
+function createDevelopmentStopPopupContent(
+  candidate: NearbyDevelopmentLocation,
+) {
+  const content = document.createElement("div");
+  const title = document.createElement("strong");
+  const details = document.createElement("span");
+  const warning = document.createElement("span");
+
+  title.className = "block text-sm text-slate-950";
+  title.textContent = candidate.location.name;
+  details.className = "mt-1 block text-xs text-slate-600";
+  details.textContent = `${candidate.location.kind} · ${formatApproximateDistance(candidate.distanceMeters)}`;
+  warning.className = "mt-2 block text-xs font-semibold text-amber-800";
+  warning.textContent =
+    "Mapped stop · Unverified and unavailable for public directions";
+  content.append(title, details, warning);
+
+  return content;
+}
+
 export function CommuteMap() {
   const {
     activeSupportedLocations,
     currentPosition,
     geolocationStatus,
     locateOnMap,
+    nearbyDevelopmentPickupCandidates,
     nearbyPickupCandidates,
     pickupJourneyMatches,
     pickupJourneySearchStatus,
@@ -219,9 +242,11 @@ export function CommuteMap() {
     selectedDestinationPlace,
     selectedCurrentLocationJourneyMap,
     selectedCurrentLocationJourneyOption,
+    selectedJourneySegmentPosition,
     selectedOriginPlace,
     selectedPickupCandidate,
     selectedSearchJourneyPreviewMap,
+    setSelectedJourneySegmentPosition,
     selectPickupCandidate,
     supportedLocationsStatus,
   } = useCurrentLocationOrigin();
@@ -229,6 +254,7 @@ export function CommuteMap() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const renderedLocationMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const developmentLocationMarkersRef = useRef<maplibregl.Marker[]>([]);
   const searchedPlaceMarkersRef = useRef<maplibregl.Marker[]>([]);
   const selectedJourneyMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [status, setStatus] = useState<MapStatus>("loading");
@@ -382,6 +408,7 @@ export function CommuteMap() {
       currentLocationMarkerRef.current?.remove();
       currentLocationMarkerRef.current = null;
       searchedPlaceMarkersRef.current = [];
+      developmentLocationMarkersRef.current = [];
       selectedJourneyMarkersRef.current = [];
       mapRef.current = null;
 
@@ -513,6 +540,59 @@ export function CommuteMap() {
   useEffect(() => {
     const map = mapRef.current;
 
+    for (const marker of developmentLocationMarkersRef.current) {
+      marker.remove();
+    }
+
+    developmentLocationMarkersRef.current = [];
+
+    if (
+      !map ||
+      status !== "ready" ||
+      nearbyDevelopmentPickupCandidates.length === 0
+    ) {
+      return;
+    }
+
+    for (const candidate of nearbyDevelopmentPickupCandidates) {
+      const markerElement = document.createElement("button");
+
+      markerElement.type = "button";
+      markerElement.title = `${candidate.location.name} (unverified mapped stop)`;
+      markerElement.setAttribute(
+        "aria-label",
+        `Unverified mapped stop: ${candidate.location.name}`,
+      );
+      markerElement.textContent = "?";
+      markerElement.className =
+        "flex size-9 cursor-pointer items-center justify-center rounded-full border-[3px] border-white bg-orange-600 text-sm font-bold text-white shadow-lg ring-4 ring-orange-300/40 transition hover:bg-orange-800 focus:ring-4 focus:ring-orange-300 focus:outline-none";
+
+      const marker = new maplibregl.Marker({
+        element: markerElement,
+        anchor: "center",
+      })
+        .setLngLat([candidate.location.longitude, candidate.location.latitude])
+        .setPopup(
+          new maplibregl.Popup({ offset: 18 }).setDOMContent(
+            createDevelopmentStopPopupContent(candidate),
+          ),
+        )
+        .addTo(map);
+
+      developmentLocationMarkersRef.current.push(marker);
+    }
+
+    return () => {
+      for (const marker of developmentLocationMarkersRef.current) {
+        marker.remove();
+      }
+      developmentLocationMarkersRef.current = [];
+    };
+  }, [nearbyDevelopmentPickupCandidates, status]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
     for (const marker of searchedPlaceMarkersRef.current) {
       marker.remove();
     }
@@ -623,10 +703,15 @@ export function CommuteMap() {
       .setPopup(popup)
       .addTo(map);
 
-    if (nearbyPickupCandidates.length > 0) {
+    const nearbyMapCandidates =
+      nearbyPickupCandidates.length > 0
+        ? nearbyPickupCandidates
+        : nearbyDevelopmentPickupCandidates;
+
+    if (nearbyMapCandidates.length > 0) {
       const bounds = new maplibregl.LngLatBounds(coordinates, coordinates);
 
-      for (const candidate of nearbyPickupCandidates) {
+      for (const candidate of nearbyMapCandidates) {
         bounds.extend([
           candidate.location.longitude,
           candidate.location.latitude,
@@ -644,7 +729,12 @@ export function CommuteMap() {
         zoom: Math.max(map.getZoom(), 14),
       });
     }
-  }, [currentPosition, nearbyPickupCandidates, status]);
+  }, [
+    currentPosition,
+    nearbyDevelopmentPickupCandidates,
+    nearbyPickupCandidates,
+    status,
+  ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -669,6 +759,7 @@ export function CommuteMap() {
     const handlePathClick = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
       const kind = feature?.properties?.kind;
+      const segmentPosition = feature?.properties?.segmentPosition;
       const popupContent = document.createElement("div");
       const popupTitle = document.createElement("strong");
       const popupDescription = document.createElement("span");
@@ -681,6 +772,13 @@ export function CommuteMap() {
         ? "Schematic development line · Not a verified street route"
         : "Verified journey path";
       popupContent.append(popupTitle, popupDescription);
+
+      if (
+        typeof segmentPosition === "number" &&
+        Number.isInteger(segmentPosition)
+      ) {
+        setSelectedJourneySegmentPosition(segmentPosition);
+      }
 
       new maplibregl.Popup({ offset: 12 })
         .setLngLat(event.lngLat)
@@ -712,7 +810,7 @@ export function CommuteMap() {
         return;
       }
 
-      const boundsCoordinates = selectedCurrentLocationJourneyMap
+      const fullJourneyBoundsCoordinates = selectedCurrentLocationJourneyMap
         ? selectedCurrentLocationJourneyMap.boundsCoordinates
         : [
             ...publishedMap.markers.features.map(
@@ -722,6 +820,20 @@ export function CommuteMap() {
               (feature) => feature.geometry.coordinates,
             ),
           ];
+      const selectedSegmentCoordinates =
+        selectedJourneySegmentPosition === null
+          ? []
+          : publishedMap.paths.features
+              .filter(
+                (feature) =>
+                  feature.properties.segmentPosition ===
+                  selectedJourneySegmentPosition,
+              )
+              .flatMap((feature) => feature.geometry.coordinates);
+      const boundsCoordinates =
+        selectedSegmentCoordinates.length > 0
+          ? selectedSegmentCoordinates
+          : fullJourneyBoundsCoordinates;
 
       if (selectedCurrentLocationJourneyMap) {
         map.addSource(selectedJourneySourceIds.initialWalking, {
@@ -750,6 +862,29 @@ export function CommuteMap() {
           type: "geojson",
           data: publishedMap.paths,
         });
+
+        if (selectedJourneySegmentPosition !== null) {
+          map.addLayer({
+            id: selectedJourneyLayerIds.selectedSegment,
+            type: "line",
+            source: selectedJourneySourceIds.publishedPaths,
+            filter: [
+              "==",
+              ["get", "segmentPosition"],
+              selectedJourneySegmentPosition,
+            ],
+            layout: {
+              "line-cap": "round",
+              "line-join": "round",
+            },
+            paint: {
+              "line-color": "#f59e0b",
+              "line-width": 12,
+              "line-opacity": 0.55,
+            },
+          });
+        }
+
         map.addLayer({
           id: selectedJourneyLayerIds.publishedTransit,
           type: "line",
@@ -901,7 +1036,9 @@ export function CommuteMap() {
     };
   }, [
     selectedCurrentLocationJourneyMap,
+    selectedJourneySegmentPosition,
     selectedSearchJourneyPreviewMap,
+    setSelectedJourneySegmentPosition,
     status,
   ]);
 
@@ -1019,6 +1156,20 @@ export function CommuteMap() {
           </div>
         ) : null}
 
+        {status === "ready" && nearbyDevelopmentPickupCandidates.length > 0 ? (
+          <div className="pointer-events-none absolute right-4 bottom-8 rounded-xl border border-amber-200 bg-amber-50/95 px-3 py-2 text-xs font-semibold text-amber-950 shadow-md">
+            <span className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="flex size-4 items-center justify-center rounded-full bg-orange-600 text-[0.6rem] font-bold text-white"
+              >
+                ?
+              </span>
+              Mapped stop · Unverified
+            </span>
+          </div>
+        ) : null}
+
         {status === "ready" && locationStatus === "empty" ? (
           <div
             role="status"
@@ -1057,15 +1208,25 @@ export function CommuteMap() {
       </p>
 
       {selectedSearchJourneyPreviewMap ? (
-        <p
-          role="status"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950"
-        >
-          Numbered markers and schematic lines show the selected local
-          development preview. Solid blue connects the draft transit stops;
-          dotted gray connects walking endpoints. They are not street-following
-          or field-verified routes.
-        </p>
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <p role="status">
+            {selectedJourneySegmentPosition === null
+              ? "Showing the complete draft journey."
+              : `Highlighting draft step ${selectedJourneySegmentPosition}.`}{" "}
+            Solid blue connects transit stops; dotted gray connects walking
+            endpoints. These schematic lines are not verified street routes.
+          </p>
+
+          {selectedJourneySegmentPosition !== null ? (
+            <button
+              type="button"
+              onClick={() => setSelectedJourneySegmentPosition(null)}
+              className="shrink-0 self-start rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-950 transition hover:bg-amber-100 focus:ring-4 focus:ring-amber-200 focus:outline-none sm:self-auto"
+            >
+              Show full journey
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {locationStatus === "ready" ? (
