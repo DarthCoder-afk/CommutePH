@@ -20,6 +20,7 @@ jobs:
     env:
       # Build-time placeholder only. CI does not connect to this database.
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/commutemap_ci
+      NEXT_PUBLIC_MAP_STYLE_URL: https://maps.example.test/style.json
 
     steps:
       - name: Check out repository
@@ -47,11 +48,8 @@ jobs:
       - name: Check TypeScript
         run: pnpm typecheck
 
-      - name: Test environment validation
-        run: pnpm test:env
-
-      - name: Test journey calculations
-        run: pnpm test:journey-estimates
+      - name: Run tests
+        run: pnpm test
 
       - name: Build production application
         run: pnpm build
@@ -75,6 +73,8 @@ jobs:
           context: .
           push: false
           tags: commutemap-ph:ci
+          build-args: |
+            NEXT_PUBLIC_MAP_STYLE_URL=https://maps.example.test/style.json
 
   integration:
     name: PostGIS integration
@@ -85,6 +85,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://commutemap:commutemap_ci@127.0.0.1:5432/commutemap_ci
       APP_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_MAP_STYLE_URL: https://maps.example.test/style.json
 
     services:
       database:
@@ -165,18 +166,18 @@ jobs:
           pnpm start > "$RUNNER_TEMP/commutemap-server.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/commutemap-server.pid"
 
-      - name: Wait for application health
+      - name: Wait for application readiness
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent "$APP_URL/api/health" > /dev/null; then
-              echo "Application is healthy."
+            if curl --fail --silent "$APP_URL/api/ready" > /dev/null; then
+              echo "Application is ready."
               exit 0
             fi
 
             sleep 1
           done
 
-          echo "Application did not become healthy."
+          echo "Application did not become ready."
           cat "$RUNNER_TEMP/commutemap-server.log"
           exit 1
 

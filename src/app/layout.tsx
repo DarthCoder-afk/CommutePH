@@ -1,15 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { SiteHeader } from "@/components/site-header";
 
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -32,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en-PH" className={`${geistSans.variable} h-full`}>
+    <html lang="en-PH" className="h-full">
       <body className="flex min-h-full flex-col bg-slate-50 font-sans text-slate-950 antialiased">
         <SiteHeader />
         {children}

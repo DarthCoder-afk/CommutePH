@@ -38,6 +38,10 @@ type HealthResponse = {
   };
 };
 
+type LivenessResponse = {
+  status: "ok";
+};
+
 const applicationUrl = process.env.APP_URL ?? "http://localhost:3000";
 
 function createUrl(pathname: string, parameters?: Record<string, string>) {
@@ -87,10 +91,18 @@ async function fetchJson(
 async function main() {
   console.log(`Checking public application at ${applicationUrl}`);
 
-  const healthResponse = (await fetchJson(
-    "/api/health",
+  const livenessResponse = (await fetchJson(
+    "/api/live",
     200,
-  )) as HealthResponse;
+  )) as LivenessResponse;
+
+  assert.equal(
+    livenessResponse.status,
+    "ok",
+    "The application liveness status is not ok.",
+  );
+
+  const healthResponse = (await fetchJson("/api/ready", 200)) as HealthResponse;
 
   assert.equal(
     healthResponse.status,
@@ -102,6 +114,24 @@ async function main() {
     healthResponse.checks.database,
     "ok",
     "The database health status is not ok.",
+  );
+
+  const homeResponse = await fetch(createUrl("/"));
+
+  assert.equal(
+    homeResponse.status,
+    200,
+    "The public home page is unavailable.",
+  );
+  assert.equal(
+    homeResponse.headers.get("x-content-type-options"),
+    "nosniff",
+    "The public response is missing the content-type protection header.",
+  );
+  assert.equal(
+    homeResponse.headers.get("x-frame-options"),
+    "DENY",
+    "The public response is missing clickjacking protection.",
   );
 
   const activeLocationResponse = (await fetchJson("/api/locations", 200, {
